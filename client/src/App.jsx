@@ -15,13 +15,14 @@ function App() {
     const text = message.trim()
     if (!text) return
 
-    setMessages((c) => [...c, { role: 'user', content: text }])
+    const userMessage = { role: 'user', content: text }
+    setMessages((c) => [...c, userMessage])
     setMessage('')
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ messages: [...messages, userMessage] })
       })
       const data = await res.json()
       if (data.reply) {
