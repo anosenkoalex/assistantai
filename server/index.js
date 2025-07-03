@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const aiRouter = require('./routes/ai');
 const chatRoutes = require('./routes/chatRoutes');
+const knowledgeRoutes = require('./routes/knowledgeRoutes');
 const initDb = require('./db/init');
 
 dotenv.config();
@@ -14,6 +15,8 @@ app.use(express.json());
 initDb();
 
 app.use('/api/chat', chatRoutes);
+
+app.use('/api/knowledge', knowledgeRoutes);
 
 app.use('/api/ask', aiRouter);
 
