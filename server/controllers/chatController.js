@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { OpenAI } = require('openai');
 const db = require('../db/knex');
 
