@@ -6,6 +6,7 @@ const chatRoutes = require('./routes/chatRoutes');
 const knowledgeRoutes = require('./routes/knowledgeRoutes');
 const authRoutes = require('./routes/authRoutes');
 const initDb = require('./db/init');
+require('./services/telegramBot');
 
 dotenv.config();
 
