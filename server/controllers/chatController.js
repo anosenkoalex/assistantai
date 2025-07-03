@@ -1,33 +1,11 @@
 require('dotenv').config();
-const { OpenAI } = require('openai');
 const db = require('../db/knex');
-const { readKnowledge } = require('./knowledgeController');
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const { chatCompletion } = require('../services/openaiService');
 
 async function handleChatMessage(req, res) {
   const { messages = [] } = req.body;
   try {
-    const knowledge = await readKnowledge();
-    let systemPrompt = '';
-    if (knowledge) {
-      const faqText = (knowledge.faq || [])
-        .map((f) => `${f.question} - ${f.answer}`)
-        .join('\n');
-      systemPrompt =
-        `Контекст: ${knowledge.businessDescription}\n` +
-        `Товары: ${(knowledge.products || []).join(', ')}\n` +
-        `FAQ:\n${faqText}`;
-    }
-    const prepared = [...messages];
-    if (systemPrompt) {
-      prepared.unshift({ role: 'system', content: systemPrompt });
-    }
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: prepared,
-    });
-    const reply = completion.choices?.[0]?.message?.content?.trim() || '';
+    const reply = await chatCompletion(messages);
     const lastUserMessage = messages[messages.length - 1]?.content || '';
     if (lastUserMessage) {
       await db('messages').insert({ role: 'user', content: lastUserMessage });
