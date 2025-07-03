@@ -6,7 +6,7 @@ const { readKnowledge } = require('./knowledgeController');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function handleChatMessage(req, res) {
-  const { message } = req.body;
+  const { messages } = req.body;
   try {
     const knowledge = await readKnowledge();
     let systemPrompt = '';
@@ -27,9 +27,11 @@ async function handleChatMessage(req, res) {
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages,
+      messages: messages,
     });
     const reply = completion.choices?.[0]?.message?.content || '';
-    await db('messages').insert({ role: 'user', content: message });
+    const lastUserMessage = messages?.[messages.length - 1]?.content || '';
+    await db('messages').insert({ role: 'user', content: lastUserMessage });
     await db('messages').insert({ role: 'assistant', content: reply });
     res.json({ reply });
   } catch (error) {
