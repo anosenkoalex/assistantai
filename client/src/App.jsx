@@ -13,7 +13,7 @@ function App() {
     setConversation((c) => [...c, { role: 'user', content: text }])
     setMessage('')
     try {
-      const res = await fetch('/api/ask', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
