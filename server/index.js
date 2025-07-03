@@ -8,6 +8,7 @@ const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const { loadBusinessData } = require('./services/openaiService');
 const initDb = require('./db/init');
+require('./services/telegramBot');
 
 dotenv.config();
 
