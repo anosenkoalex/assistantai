@@ -1,9 +1,10 @@
 const express = require('express');
 const { getKnowledge, saveKnowledge } = require('../controllers/knowledgeController');
+const { authMiddleware, adminOnly } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.get('/', getKnowledge);
-router.post('/', saveKnowledge);
+router.get('/', authMiddleware, adminOnly, getKnowledge);
+router.post('/', authMiddleware, adminOnly, saveKnowledge);
 
 module.exports = router;
