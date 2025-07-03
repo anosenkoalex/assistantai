@@ -1,7 +1,5 @@
-[
-  {
-    "email": "admin@example.com",
-    "password": "$2b$10$cCXIOiJfefhwjKoJwnLMe.diXI/jGb.GRW.VKYim8nkKsrtYzsyMm",
-    "role": "admin"
-  }
-]
+{
+  "email": "admin@example.com",
+  "password_hash": "$2b$10$PswHGpEb2Lb/UjT8EB0Y9OYQHtReDCnc0z4b0xZqa8eUQFkzUcr2O",
+  "role": "admin"
+}
