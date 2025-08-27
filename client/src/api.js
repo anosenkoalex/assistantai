@@ -151,3 +151,20 @@ export async function igQuickStats(params = {}) {
   return r.json();
 }
 
+export async function igAdminSend({ contactId, text, quick }) {
+  const r = await fetch('/api/ig/send', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ contactId, text, quick })
+  });
+  if (!r.ok) throw new Error('send failed');
+  return r.json();
+}
+
+export async function igRuleStats(params = {}) {
+  const q = new URLSearchParams(params).toString();
+  const r = await fetch(`/api/ig/stats/rules${q ? `?${q}` : ''}`);
+  if (!r.ok) throw new Error('rule stats fetch failed');
+  return r.json();
+}
+

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { igListContacts, igListThreads, igListEvents, igSetContactStatus } from './api';
+import { igListContacts, igListThreads, igListEvents, igSetContactStatus, igAdminSend } from './api';
 
 export default function IgDialogs() {
   const [contacts, setContacts] = useState([]);
@@ -9,6 +9,8 @@ export default function IgDialogs() {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [events, setEvents] = useState([]);
+  const [outText, setOutText] = useState('');
+  const [outQuick, setOutQuick] = useState(''); // "Цена,Доставка"
 
   async function loadContacts() {
     try {
@@ -103,6 +105,22 @@ export default function IgDialogs() {
           ))}
           {!events.length && <div style={{ opacity: 0.7 }}>Выберите тред</div>}
         </div>
+        {selectedContact && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #ccc' }}>
+            <h4>Ответить как менеджер</h4>
+            <textarea rows={3} value={outText} onChange={e=>setOutText(e.target.value)} placeholder="Сообщение клиенту..." style={{ width:'100%' }} />
+            <div style={{ marginTop: 6, display:'flex', gap:8 }}>
+              <input value={outQuick} onChange={e=>setOutQuick(e.target.value)} placeholder="Quick replies (через запятую)" style={{ flex:1 }} />
+              <button onClick={async ()=>{
+                const quick = outQuick.split(',').map(s=>s.trim()).filter(Boolean);
+                await igAdminSend({ contactId: selectedContact.id, text: outText, quick });
+                setOutText(''); setOutQuick('');
+                // перезагрузить события текущего треда
+                if (selectedThread) loadEvents(selectedThread);
+              }}>Отправить</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ gridColumn: '1/-1', minHeight: 20 }}>{status}</div>
