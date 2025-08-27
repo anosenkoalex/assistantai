@@ -138,11 +138,11 @@ export async function igGetSettings() {
   if (!r.ok) throw new Error('ig settings fetch failed');
   return r.json();
 }
-export async function igSaveSettings({ tz, quietStart, quietEnd, quickReplies }) {
+export async function igSaveSettings({ tz, quietStart, quietEnd, quickReplies, aiEnabled, aiModel, aiTemperature, systemPrompt }) {
   const r = await fetch('/api/ig/settings', {
     method: 'PUT',
     headers: { 'Content-Type':'application/json', ...authHeaders() },
-    body: JSON.stringify({ tz, quietStart, quietEnd, quickReplies })
+    body: JSON.stringify({ tz, quietStart, quietEnd, quickReplies, aiEnabled, aiModel, aiTemperature, systemPrompt })
   });
   if (!r.ok) throw new Error('ig settings save failed');
   return r.json();

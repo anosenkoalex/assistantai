@@ -3,6 +3,8 @@ import { prisma } from '../prisma.js';
 import { applyRules } from '../services/igRules.js';
 import { notifyManager } from '../services/notify.js';
 import { requireAdmin } from '../mw/auth.js';
+import { buildThreadMessages, askOpenAI } from '../services/ai.js';
+import { estimateCostUsd } from '../services/cost.js';
 
 type IGMessaging = {
   sender?: { id?: string };      // IG user PSID
@@ -168,18 +170,44 @@ export async function registerIGRoutes(app: FastifyInstance) {
               }
 
               if (res.action === 'greet') {
-                const reply = res.reply;
                 const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
                 const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
 
+                let reply = res.reply; // дефолтный ответ правил
+
+                // Попробуем ИИ, если включен и есть входящий текст
+                if (contact.status === 'bot' && settings?.aiEnabled && text) {
+                  const model = settings.aiModel || process.env.DEFAULT_MODEL || 'gpt-4o-mini';
+                  const temperature = typeof settings.aiTemperature === 'number' ? settings.aiTemperature : 0.7;
+                  const msgs = await buildThreadMessages(thread.id, text, settings.systemPrompt ?? undefined, 12);
+                  try {
+                    const ai = await askOpenAI(msgs, model, temperature);
+                    if (ai.text) reply = ai.text;
+
+                    // Запишем usage при наличии
+                    if (ai.usage) {
+                      const cost = estimateCostUsd(model, ai.usage.prompt_tokens, ai.usage.completion_tokens);
+                      await prisma.usage.create({
+                        data: {
+                          userId: contact.id,
+                          model,
+                          promptTokens: ai.usage.prompt_tokens || 0,
+                          completionTokens: ai.usage.completion_tokens || 0,
+                          costUsd: cost
+                        }
+                      });
+                    }
+                  } catch (e) {
+                    app.log.error(e, 'AI reply failed; fallback to rule reply');
+                  }
+                }
+
                 await sendIGText(userId, reply, quick);
 
-                // обычное исходящее
                 await prisma.igEvent.create({
                   data: { threadId: thread.id, direction: 'out', type: 'text', text: reply }
                 });
 
-                // лог сработавшего правила
                 if (res.meta?.ruleId) {
                   await prisma.igEvent.create({
                     data: {
