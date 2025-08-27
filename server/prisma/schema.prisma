@@ -60,6 +60,21 @@ model IgSetting {
   quietStart   String   @default("21:00")        // формат HH:mm
   quietEnd     String   @default("09:00")        // формат HH:mm
   quickReplies String?                           // JSON: string[] (кнопки)
+  // --- AI ---
+  aiEnabled    Boolean  @default(false)
+  aiModel      String?
+  aiTemperature Float   @default(0.7)
+  systemPrompt String?
   updatedAt    DateTime @updatedAt
   createdAt    DateTime @default(now())
+}
+
+model Usage {
+  id              String   @id @default(cuid())
+  userId          String
+  model           String
+  promptTokens    Int
+  completionTokens Int
+  costUsd         Float    @default(0)
+  createdAt       DateTime @default(now())
 }
