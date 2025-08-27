@@ -9,6 +9,7 @@ import { registerModelsRoutes } from './routes/models.js';
 import { registerUsageRoutes } from './routes/usage.js';
 import { registerIGRoutes } from './routes/ig.js';
 import { registerIgRulesRoutes } from './routes/igRules.js';
+import { registerIgAdminRoutes } from './routes/igAdmin.js';
 
 const app = Fastify({ logger });
 
@@ -23,6 +24,7 @@ await registerModelsRoutes(app);
 await registerUsageRoutes(app);
 await registerIGRoutes(app);
 await registerIgRulesRoutes(app);
+await registerIgAdminRoutes(app);
 
 const port = Number(process.env.API_PORT ?? 8787);
 app.listen({ port, host: '0.0.0.0' }).then(() => {

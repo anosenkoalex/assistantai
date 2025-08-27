@@ -78,3 +78,52 @@ export async function streamChat({ messages, model, temperature, system }, { onD
   }
 }
 
+// IG Admin
+export async function igListContacts(params = {}) {
+  const q = new URLSearchParams(params).toString();
+  const r = await fetch(`/api/ig/contacts${q ? `?${q}` : ''}`);
+  if (!r.ok) throw new Error('contacts fetch failed');
+  return r.json();
+}
+export async function igListThreads(contactId) {
+  const r = await fetch(`/api/ig/threads?contactId=${encodeURIComponent(contactId)}`);
+  if (!r.ok) throw new Error('threads fetch failed');
+  return r.json();
+}
+export async function igListEvents(threadId, params = {}) {
+  const q = new URLSearchParams({ ...params, threadId }).toString();
+  const r = await fetch(`/api/ig/events?${q}`);
+  if (!r.ok) throw new Error('events fetch failed');
+  return r.json();
+}
+export async function igSetContactStatus(id, status) {
+  const r = await fetch(`/api/ig/contacts/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ status })
+  });
+  if (!r.ok) throw new Error('set status failed');
+  return r.json();
+}
+
+// IG Rules (уже есть базовые)
+export async function igGetRules() {
+  const r = await fetch('/api/ig/rules');
+  if (!r.ok) throw new Error('rules fetch failed');
+  return r.json();
+}
+export async function igCreateRule({ keyword, reply }) {
+  const r = await fetch('/api/ig/rules', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ keyword, reply })
+  });
+  if (!r.ok) throw new Error('rule create failed');
+  return r.json();
+}
+export async function igToggleRule(id) {
+  const r = await fetch(`/api/ig/rules/${id}/toggle`, { method: 'PUT' });
+  if (!r.ok) throw new Error('rule toggle failed');
+  return r.json();
+}
+
