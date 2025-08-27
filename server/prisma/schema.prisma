@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// existing models would go here
+
+model IgContact {
+  id            String   @id @default(cuid())
+  igUserId      String   @unique // PSID пользователя из IG
+  username      String?          // если доступно через дополнительные запросы
+  fullName      String?
+  locale        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  threads       IgThread[]
+  status        String   @default("bot") // bot | manager | muted
+  notes         String?
+}
+
+model IgThread {
+  id            String   @id @default(cuid())
+  contactId     String
+  contact       IgContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  pageId        String?   // FB Page ID
+  state         String    @default("active") // active | archived
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  events        IgEvent[]
+}
+
+model IgEvent {
+  id         String   @id @default(cuid())
+  threadId   String
+  thread     IgThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  direction  String   // in | out
+  type       String   // text | attachment | postback | system
+  text       String?
+  payload    Json?
+  at         DateTime @default(now())
+}
