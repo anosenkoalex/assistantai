@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import { getApiKeyFromDB } from '../routes/settings.js';
+import { logIntegrationError } from './ilog.js';
 
 type ChatMsg = { role: 'system'|'user'|'assistant'; content: string };
 
@@ -41,8 +42,8 @@ export async function askOpenAI(messages: ChatMsg[], model: string, temperature 
   });
 
   if (!r.ok) {
-    const t = await r.text().catch(()=> '');
-    throw new Error(`OpenAI HTTP ${r.status}: ${t}`);
+    await logIntegrationError({ source: 'OPENAI', code: String(r.status), message: 'OpenAI HTTP error', meta: { req: { model, temperature }, body: await r.text().catch(() => '') } });
+    throw new Error(`OpenAI HTTP ${r.status}`);
   }
   const data = await r.json();
   const text = data.choices?.[0]?.message?.content?.trim?.() || '';

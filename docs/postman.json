@@ -1,0 +1,15 @@
+{
+  "info": { "name": "AAI IG API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "header": [], "url": "{{base}}/healthz" } },
+    { "name": "Admin: Contacts", "request": { "method": "GET", "header": [{"key":"Authorization","value":"Bearer {{ADMIN_TOKEN}}"}], "url": "{{base}}/api/ig/contacts" } },
+    { "name": "Admin: Rules", "request": { "method": "GET", "header": [{"key":"Authorization","value":"Bearer {{ADMIN_TOKEN}}"}], "url": "{{base}}/api/ig/rules" } },
+    { "name": "IG: Subscribe", "request": { "method": "POST", "header": [], "url": "{{base}}/api/ig/subscribe" } },
+    { "name": "Flows: list", "request": { "method": "GET", "header": [{"key":"Authorization","value":"Bearer {{ADMIN_TOKEN}}"}], "url": "{{base}}/api/flows" } },
+    { "name": "Stats: quick", "request": { "method": "GET", "header": [{"key":"Authorization","value":"Bearer {{ADMIN_TOKEN}}"}], "url": "{{base}}/api/ig/stats/quick" } }
+  ],
+  "variable": [
+    { "key": "base", "value": "http://localhost:8787" },
+    { "key": "ADMIN_TOKEN", "value": "set-long-random-token" }
+  ]
+}

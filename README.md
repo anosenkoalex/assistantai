@@ -24,3 +24,9 @@ pnpm -r dev  # или отдельно: npm run dev в client и server
 ## Запуск (Docker)
 docker compose up --build -d
 # сервер доступен на :8787 (админ-вкладки требуют токен)
+
+## Импорт Postman
+Импортируй коллекцию из `docs/postman.json` в Postman (переменные `base` и `ADMIN_TOKEN`).
+
+## backup
+docker cp aai-app:/app/server/data.sqlite ./backup/data-$(date +%F).sqlite
