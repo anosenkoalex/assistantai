@@ -3,6 +3,7 @@ import Chat from './Chat';
 import BusinessSettings from './BusinessSettings';
 import IgRules from './IgRules';
 import IgDialogs from './IgDialogs';
+import IgSettings from './IgSettings';
 
 export default function App() {
   const [tab, setTab] = useState('chat');
@@ -14,11 +15,13 @@ export default function App() {
         <button onClick={() => setTab('settings')}>Settings</button>
         <button onClick={() => setTab('ig_rules')}>IG Rules</button>
         <button onClick={() => setTab('ig_dialogs')}>IG Dialogs</button>
+        <button onClick={() => setTab('ig_settings')}>IG Settings</button>
       </nav>
       {tab === 'chat' && <Chat />}
       {tab === 'settings' && <BusinessSettings />}
       {tab === 'ig_rules' && <IgRules />}
       {tab === 'ig_dialogs' && <IgDialogs />}
+      {tab === 'ig_settings' && <IgSettings />}
     </div>
   );
 }

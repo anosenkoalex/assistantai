@@ -1,0 +1,10 @@
+-- CreateTable
+CREATE TABLE "IgSetting" (
+    "id" INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+    "tz" TEXT NOT NULL DEFAULT 'Asia/Bishkek',
+    "quietStart" TEXT NOT NULL DEFAULT '21:00',
+    "quietEnd" TEXT NOT NULL DEFAULT '09:00',
+    "quickReplies" TEXT,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
