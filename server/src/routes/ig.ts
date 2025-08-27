@@ -44,18 +44,22 @@ export async function registerIGRoutes(app: FastifyInstance) {
             for (const m of messages) {
               const userId = m.sender?.id;
               const pageId = m.recipient?.id;
+
+              // Текст юзера
               const text = m.message?.text?.trim();
+              // ВАЖНО: Quick Reply payload приходит в message.quick_reply.payload
+              const qrPayload = (m as any)?.message?.quick_reply?.payload || m.postback?.payload; // на всякий случай
 
               if (!userId) continue;
 
-              // 1) Убедиться, что контакт существует
+              // 1) Контакт
               const contact = await prisma.igContact.upsert({
                 where: { igUserId: String(userId) },
                 create: { igUserId: String(userId), status: 'bot' },
                 update: { updatedAt: new Date() }
               });
 
-              // 2) Найти или создать активный тред
+              // 2) Активный тред
               let thread = await prisma.igThread.findFirst({
                 where: { contactId: contact.id, state: 'active' },
                 orderBy: { updatedAt: 'desc' }
@@ -65,6 +69,49 @@ export async function registerIGRoutes(app: FastifyInstance) {
                   data: { contactId: contact.id, pageId: pageId ?? undefined }
                 });
               }
+
+              // === ВЕТКА QUICK REPLY ===
+              if (qrPayload && String(qrPayload).startsWith('QR:')) {
+                const title = String(qrPayload).slice(3); // что было на кнопке
+
+                // 2.а) запись входящего quick-события
+                await prisma.igEvent.create({
+                  data: {
+                    threadId: thread.id,
+                    direction: 'in',
+                    type: 'quick',
+                    text: title,
+                    payload: m as any
+                  }
+                });
+
+                // 2.б) антиспам: если >5 quick за 60 сек — игнорим
+                const since = new Date(Date.now() - 60_000);
+                const spamCount = await prisma.igEvent.count({
+                  where: { threadId: thread.id, direction: 'in', type: 'quick', at: { gte: since } }
+                });
+                if (spamCount > 5) {
+                  app.log.warn({ userId, title }, 'QuickReply spam ignored');
+                  return; // не отвечаем
+                }
+
+                // 2.в) ответ по правилам (ищем rule по keyword == title, без учёта регистра)
+                const rule = await prisma.igRule.findFirst({
+                  where: { active: true, keyword: { equals: title, mode: 'insensitive' } }
+                });
+
+                const replyText = rule?.reply ?? `Вы выбрали: “${title}”`;
+                const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
+                const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
+
+                await sendIGText(userId, replyText, quick);
+                await prisma.igEvent.create({
+                  data: { threadId: thread.id, direction: 'out', type: 'text', text: replyText }
+                });
+                continue;
+              }
+
+              // === Обычная ветка === (как было раньше)
 
               // 3) Записать входящее событие
               await prisma.igEvent.create({

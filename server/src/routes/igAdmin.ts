@@ -62,5 +62,27 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
     });
     return updated;
   });
+
+  // Статистика нажатий Quick Replies (по text)
+  app.get('/api/ig/stats/quick', async (req) => {
+    const { from, to } = (req.query ?? {}) as any;
+    const where: any = { type: 'quick' };
+    if (from || to) where.at = {};
+    if (from) where.at.gte = new Date(from);
+    if (to) where.at.lte = new Date(to);
+
+    // Берём все quick-события и агрегируем в памяти
+    const events = await prisma.igEvent.findMany({ where, select: { text: true } });
+    const map = new Map<string, number>();
+    for (const e of events) {
+      const k = (e.text || '').trim() || '(empty)';
+      map.set(k, (map.get(k) || 0) + 1);
+    }
+    const items = Array.from(map.entries())
+      .map(([title, count]) => ({ title, count }))
+      .sort((a,b) => b.count - a.count);
+
+    return { items, total: events.length };
+  });
 }
 
