@@ -31,6 +31,16 @@ export async function applyRules({
   contactId: string;
   text?: string;
 }): Promise<RuleResult> {
+  const now = new Date();
+
+  // 0) Проверить кулдаун (антиспам) — последнее исходящее событие <30с
+  const lastOut = await prisma.igEvent.findFirst({
+    where: { thread: { contactId }, direction: 'out' },
+    orderBy: { at: 'desc' }
+  });
+  if (lastOut && now.getTime() - lastOut.at.getTime() < 30_000) {
+    return { action: 'none' }; // пропускаем автоответ
+  }
 
   // 1) STOP → mute
   if (isStop(text)) {
@@ -38,7 +48,16 @@ export async function applyRules({
       where: { id: contactId },
       data: { status: 'muted' }
     });
-    return { action: 'mute', reply: 'Вы отписались от автоответов. Если захотите продолжить — напишите «Старт».' };
+    return { action: 'mute', reply: 'Вы отписались от автоответов. Напишите «Старт», чтобы включить снова.' };
+  }
+
+  // 1b) START → вернуться из mute
+  if (text && text.trim().toLowerCase().includes('старт')) {
+    await prisma.igContact.update({
+      where: { id: contactId },
+      data: { status: 'bot' }
+    });
+    return { action: 'greet', reply: 'Автоответы снова активированы ✅' };
   }
 
   // 2) Хенд-офф менеджеру
@@ -50,12 +69,23 @@ export async function applyRules({
     return { action: 'handoff', reply: 'Передал ваш диалог менеджеру. Он скоро ответит.' };
   }
 
-  // 3) Ночной режим (если контакт не в режиме manager/muted)
+  // 3) Ночной режим
   const contact = await prisma.igContact.findUnique({ where: { id: contactId } });
-  if (contact && contact.status === 'bot' && isNight()) {
+  if (contact && contact.status === 'bot' && isNight(now)) {
     return { action: 'night', reply: 'Спасибо за сообщение! Сейчас нерабочее время — мы ответим утром.' };
   }
 
-  // 4) Базовое приветствие/разогрев (первая реплика без истории или по умолчанию)
-  return { action: 'greet', reply: 'Привет! Я онлайн-ассистент. Расскажите, что вас интересует, и я помогу 😊' };
+  // 4) Поиск по ключевым словам (IgRule)
+  if (text) {
+    const rules = await prisma.igRule.findMany({ where: { active: true } });
+    const lower = text.toLowerCase();
+    for (const rule of rules) {
+      if (lower.includes(rule.keyword.toLowerCase())) {
+        return { action: 'greet', reply: rule.reply };
+      }
+    }
+  }
+
+  // 5) Базовое приветствие
+  return { action: 'greet', reply: 'Привет! Я онлайн-ассистент. Расскажите, что вас интересует 😊' };
 }
