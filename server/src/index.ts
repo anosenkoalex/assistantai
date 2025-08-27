@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import helmet from 'fastify-helmet';
 import cors from 'fastify-cors';
+import rateLimit from '@fastify/rate-limit';
 import { logger } from './logger.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerChatRoutes } from './routes/chat.js';
@@ -16,6 +17,10 @@ const app = Fastify({ logger });
 
 await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, { origin: true });
+await app.register(rateLimit, {
+  max: 60,
+  timeWindow: '1 minute',
+});
 
 app.get('/api/health', async () => ({ ok: true, ts: new Date().toISOString() }));
 

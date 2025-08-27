@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
+import { requireAdmin } from '../mw/auth.js';
 
 export async function registerIgAdminRoutes(app: FastifyInstance) {
+  app.addHook('onRequest', (req, reply, done) => requireAdmin(req, reply, done));
   // Список контактов (с последним событием)
   app.get('/api/ig/contacts', async (req) => {
     const { q, status, take = '30', skip = '0' } = (req.query ?? {}) as any;
