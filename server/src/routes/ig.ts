@@ -5,6 +5,7 @@ import { notifyManager } from '../services/notify.js';
 import { requireAdmin } from '../mw/auth.js';
 import { buildThreadMessages, askOpenAI } from '../services/ai.js';
 import { estimateCostUsd } from '../services/cost.js';
+import { startFlow, tickFlow } from '../services/flowEngine.js';
 
 type IGMessaging = {
   sender?: { id?: string };      // IG user PSID
@@ -128,6 +129,22 @@ export async function registerIGRoutes(app: FastifyInstance) {
               });
 
               app.log.info({ userId, pageId, text }, 'IG inbound');
+
+              // попытка найти активный триггер
+              if (text) {
+                const trgs = await prisma.flowTrigger.findMany({
+                  where: { active: true, kind: 'keyword' }
+                });
+                const lower = text.toLowerCase();
+                const match = trgs.find(t => lower.includes(t.value.toLowerCase()));
+                if (match) {
+                  // стартуем flow
+                  const st = await startFlow({ contactId: contact.id, threadId: thread.id, flowId: match.flowId });
+                  await tickFlow(st.id);
+                  // не продолжаем обычную логику — flow взял управление
+                  continue;
+                }
+              }
 
               // 4) Применить правила
               const res = await applyRules({ contactId: contact.id, text });

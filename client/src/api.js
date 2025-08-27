@@ -173,3 +173,47 @@ export async function igRuleStats(params = {}) {
   return r.json();
 }
 
+// Flows CRUD
+export async function flowsList() {
+  const r = await fetch('/api/flows', { headers: { ...authHeaders() } });
+  if (!r.ok) throw new Error('flows fetch failed');
+  return r.json();
+}
+export async function flowsCreate({ name, entry, nodes }) {
+  const r = await fetch('/api/flows', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, entry, nodes })
+  });
+  if (!r.ok) throw new Error('flow create failed');
+  return r.json();
+}
+export async function flowsUpdate(id, { name, entry, nodes, active }) {
+  const r = await fetch(`/api/flows/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name, entry, nodes, active })
+  });
+  if (!r.ok) throw new Error('flow update failed');
+  return r.json();
+}
+export async function flowTriggers(flowId) {
+  const r = await fetch(`/api/flows/${flowId}/triggers`, { headers: { ...authHeaders() } });
+  if (!r.ok) throw new Error('flow triggers failed');
+  return r.json();
+}
+export async function flowTriggerCreate(flowId, { kind, value }) {
+  const r = await fetch(`/api/flows/${flowId}/triggers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ kind, value })
+  });
+  if (!r.ok) throw new Error('flow trigger create failed');
+  return r.json();
+}
+export async function flowTriggerToggle(id) {
+  const r = await fetch(`/api/flow-triggers/${id}/toggle`, { method: 'PUT', headers: { ...authHeaders() } });
+  if (!r.ok) throw new Error('flow trigger toggle failed');
+  return r.json();
+}
+
