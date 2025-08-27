@@ -217,3 +217,27 @@ export async function flowTriggerToggle(id) {
   return r.json();
 }
 
+export async function flowExport(id) {
+  const r = await fetch(`/api/flows/${id}/export`, { headers: { ...authHeaders() } });
+  if (!r.ok) throw new Error('flow export failed');
+  return r.json();
+}
+export async function flowImport(payload) {
+  const r = await fetch('/api/flows/import', {
+    method:'POST',
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) throw new Error('flow import failed');
+  return r.json();
+}
+export async function flowTriggerUpdate(id, data) {
+  const r = await fetch(`/api/flow-triggers/${id}`, {
+    method:'PUT',
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
+    body: JSON.stringify(data)
+  });
+  if (!r.ok) throw new Error('flow trigger update failed');
+  return r.json();
+}
+

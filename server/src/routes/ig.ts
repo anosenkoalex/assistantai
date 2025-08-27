@@ -7,6 +7,18 @@ import { buildThreadMessages, askOpenAI } from '../services/ai.js';
 import { estimateCostUsd } from '../services/cost.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
 
+function isTriggerActive(trg: any, now = new Date()) {
+  if (trg.startAt && now < new Date(trg.startAt)) return false;
+  if (trg.endAt && now > new Date(trg.endAt)) return false;
+  if (typeof trg.daysMask === 'number') {
+    // 1=Mon..7=Sun → IG/JS getDay(): 0=Sun..6=Sat
+    const jsDay = now.getDay(); // 0..6
+    const bit = jsDay === 0 ? 64 : 1 << (jsDay - 1);
+    return (trg.daysMask & bit) !== 0;
+  }
+  return true;
+}
+
 type IGMessaging = {
   sender?: { id?: string };      // IG user PSID
   recipient?: { id?: string };   // Page ID
@@ -74,47 +86,6 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 });
               }
 
-              // === ВЕТКА QUICK REPLY ===
-              if (qrPayload && String(qrPayload).startsWith('QR:')) {
-                const title = String(qrPayload).slice(3); // что было на кнопке
-
-                // 2.а) запись входящего quick-события
-                await prisma.igEvent.create({
-                  data: {
-                    threadId: thread.id,
-                    direction: 'in',
-                    type: 'quick',
-                    text: title,
-                    payload: m as any
-                  }
-                });
-
-                // 2.б) антиспам: если >5 quick за 60 сек — игнорим
-                const since = new Date(Date.now() - 60_000);
-                const spamCount = await prisma.igEvent.count({
-                  where: { threadId: thread.id, direction: 'in', type: 'quick', at: { gte: since } }
-                });
-                if (spamCount > 5) {
-                  app.log.warn({ userId, title }, 'QuickReply spam ignored');
-                  return; // не отвечаем
-                }
-
-                // 2.в) ответ по правилам (ищем rule по keyword == title, без учёта регистра)
-                const rule = await prisma.igRule.findFirst({
-                  where: { active: true, keyword: { equals: title, mode: 'insensitive' } }
-                });
-
-                const replyText = rule?.reply ?? `Вы выбрали: “${title}”`;
-                const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
-                const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
-
-                await sendIGText(userId, replyText, quick);
-                await prisma.igEvent.create({
-                  data: { threadId: thread.id, direction: 'out', type: 'text', text: replyText }
-                });
-                continue;
-              }
-
               // === Обычная ветка === (как было раньше)
 
               // 3) Записать входящее событие
@@ -130,20 +101,55 @@ export async function registerIGRoutes(app: FastifyInstance) {
 
               app.log.info({ userId, pageId, text }, 'IG inbound');
 
-              // попытка найти активный триггер
-              if (text) {
-                const trgs = await prisma.flowTrigger.findMany({
-                  where: { active: true, kind: 'keyword' }
-                });
-                const lower = text.toLowerCase();
-                const match = trgs.find(t => lower.includes(t.value.toLowerCase()));
-                if (match) {
-                  // стартуем flow
-                  const st = await startFlow({ contactId: contact.id, threadId: thread.id, flowId: match.flowId });
-                  await tickFlow(st.id);
-                  // не продолжаем обычную логику — flow взял управление
-                  continue;
-                }
+              const now = new Date();
+              const trgs = await prisma.flowTrigger.findMany({ where: { active: true } });
+
+              let matched: any = null;
+
+              // 1) по quick reply (если есть payload QR:Title)
+              if (qrPayload && String(qrPayload).startsWith('QR:')) {
+                const title = String(qrPayload).slice(3);
+                matched = trgs.find(t =>
+                  t.kind === 'quick' &&
+                  isTriggerActive(t, now) &&
+                  title.toLowerCase().includes((t.value || '').toLowerCase())
+                );
+              }
+
+              // 2) по keyword (если есть текст)
+              if (!matched && text) {
+                matched = trgs.find(t =>
+                  t.kind === 'keyword' &&
+                  isTriggerActive(t, now) &&
+                  text.toLowerCase().includes((t.value || '').toLowerCase())
+                );
+              }
+
+              // 3) по referral (если есть postback/referral payload)
+              const refPayload = (m as any)?.postback?.payload || (m as any)?.referral?.ref;
+              if (!matched && refPayload) {
+                matched = trgs.find(t =>
+                  t.kind === 'referral' &&
+                  isTriggerActive(t, now) &&
+                  String(refPayload).toLowerCase().includes((t.value || '').toLowerCase())
+                );
+              }
+
+              // 4) story mention (Meta может прислать как отдельный тип change/value)
+              const isStoryMention = !!(m as any)?.story_mention; // заглушка под будущие события
+              if (!matched && isStoryMention) {
+                matched = trgs.find(t => t.kind === 'story_mention' && isTriggerActive(t, now));
+              }
+
+              // 5) any (любой вход)
+              if (!matched) {
+                matched = trgs.find(t => t.kind === 'any' && isTriggerActive(t, now));
+              }
+
+              if (matched) {
+                const st = await startFlow({ contactId: contact.id, threadId: thread.id, flowId: matched.flowId });
+                await tickFlow(st.id);
+                continue; // управление взял flow
               }
 
               // 4) Применить правила
