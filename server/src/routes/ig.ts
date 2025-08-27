@@ -61,6 +61,25 @@ export async function registerIGRoutes(app: FastifyInstance) {
     // Важно отвечать 200 быстро, иначе Meta ретраит
     return reply.code(200).send('ok');
   });
+
+  // Ручная подписка на вебхук (выполняется один раз при настройке)
+  app.post('/api/ig/subscribe', async (_req, reply) => {
+    const pageId = process.env.FB_PAGE_ID || '';
+    const token = process.env.PAGE_ACCESS_TOKEN || '';
+
+    if (!pageId || !token) {
+      return reply.code(400).send({ error: 'Missing FB_PAGE_ID or PAGE_ACCESS_TOKEN' });
+    }
+
+    const url = `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?access_token=${encodeURIComponent(token)}`;
+    const r = await fetch(url, { method: 'POST' });
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok) {
+      return reply.code(500).send({ error: 'subscribe failed', data });
+    }
+    return { ok: true, data };
+  });
 }
 
 // Отправка текста пользователю через Page Access Token
