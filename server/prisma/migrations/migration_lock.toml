@@ -1,0 +1,3 @@
+# Prisma Migrate lock file
+# This file should be committed to your repository.
+provider = "sqlite"
