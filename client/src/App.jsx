@@ -1,19 +1,25 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './Login.jsx';
-import Admin from './Admin.jsx';
-import BusinessSettings from './BusinessSettings.jsx';
-import Chat from './Chat.jsx';
+import React, { useState } from 'react';
+import Chat from './Chat';
+import BusinessSettings from './BusinessSettings';
+import IgRules from './IgRules';
+import IgDialogs from './IgDialogs';
 
 export default function App() {
+  const [tab, setTab] = useState('chat');
+
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/admin" element={<BusinessSettings />} />
-        <Route path="/legacy-admin" element={<Admin />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <div>
+      <nav style={{ display:'flex', gap:8, padding:8, borderBottom: '1px solid #eee' }}>
+        <button onClick={() => setTab('chat')}>Chat</button>
+        <button onClick={() => setTab('settings')}>Settings</button>
+        <button onClick={() => setTab('ig_rules')}>IG Rules</button>
+        <button onClick={() => setTab('ig_dialogs')}>IG Dialogs</button>
+      </nav>
+      {tab === 'chat' && <Chat />}
+      {tab === 'settings' && <BusinessSettings />}
+      {tab === 'ig_rules' && <IgRules />}
+      {tab === 'ig_dialogs' && <IgDialogs />}
+    </div>
   );
 }
+
