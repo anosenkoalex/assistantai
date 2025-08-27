@@ -170,10 +170,26 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 const reply = res.reply;
                 const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
                 const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
+
                 await sendIGText(userId, reply, quick);
+
+                // обычное исходящее
                 await prisma.igEvent.create({
                   data: { threadId: thread.id, direction: 'out', type: 'text', text: reply }
                 });
+
+                // лог сработавшего правила
+                if (res.meta?.ruleId) {
+                  await prisma.igEvent.create({
+                    data: {
+                      threadId: thread.id,
+                      direction: 'out',
+                      type: 'rule',
+                      text: `hit:${res.meta.keyword || ''}`,
+                      payload: { ruleId: res.meta.ruleId, keyword: res.meta.keyword }
+                    }
+                  });
+                }
                 continue;
               }
 

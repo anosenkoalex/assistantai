@@ -5,7 +5,7 @@ export type RuleResult =
   | { action: 'mute'; reply?: string }
   | { action: 'handoff'; reply?: string }
   | { action: 'night'; reply?: string }
-  | { action: 'greet'; reply: string }
+  | { action: 'greet'; reply: string; meta?: { ruleId?: string; keyword?: string } }
   | { action: 'none' };
 
 function isStop(text?: string) {
@@ -81,7 +81,8 @@ export async function applyRules({
     const lower = text.toLowerCase();
     for (const rule of rules) {
       if (lower.includes(rule.keyword.toLowerCase())) {
-        return { action: 'greet', reply: rule.reply };
+        // пометим, что сработало правило — вернём метаданные
+        return { action: 'greet', reply: rule.reply, meta: { ruleId: rule.id, keyword: rule.keyword } } as any;
       }
     }
   }

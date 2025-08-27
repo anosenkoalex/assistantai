@@ -84,5 +84,94 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
 
     return { items, total: events.length };
   });
+
+  // Ручная отправка сообщения контакту (от имени страницы)
+  app.post('/api/ig/send', async (req, reply) => {
+    const { contactId, text, quick } = (req.body ?? {}) as {
+      contactId?: string;
+      text?: string;
+      quick?: string[];
+    };
+    if (!contactId || !text) return reply.code(400).send({ error: 'contactId and text required' });
+
+    const contact = await prisma.igContact.findUnique({ where: { id: contactId } });
+    if (!contact) return reply.code(404).send({ error: 'contact not found' });
+
+    // найти/создать активный тред
+    let thread = await prisma.igThread.findFirst({
+      where: { contactId, state: 'active' },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!thread) thread = await prisma.igThread.create({ data: { contactId } });
+
+    // отправить
+    await sendIGText(contact.igUserId, text, Array.isArray(quick) ? quick : undefined);
+
+    // залогировать
+    await prisma.igEvent.create({
+      data: { threadId: thread.id, direction: 'out', type: 'text', text },
+    });
+
+    // при ручном ответе логично перевести контакт в режим manager (бот молчит)
+    await prisma.igContact.update({
+      where: { id: contactId },
+      data: { status: 'manager' },
+    });
+
+    return { ok: true };
+  });
+
+  // Статистика по срабатываниям правил (по IgEvent.type='rule')
+  app.get('/api/ig/stats/rules', async (req) => {
+    const { from, to } = (req.query ?? {}) as any;
+    const where: any = { type: 'rule' };
+    if (from || to) where.at = {};
+    if (from) where.at.gte = new Date(from);
+    if (to) where.at.lte = new Date(to);
+
+    const events = await prisma.igEvent.findMany({ where, select: { payload: true } });
+    const map = new Map<string, number>();
+    for (const e of events) {
+      const id = (e.payload as any)?.ruleId || '(unknown)';
+      map.set(id, (map.get(id) || 0) + 1);
+    }
+
+    // подтянем названия/keywords
+    const ids = Array.from(map.keys()).filter(x => x !== '(unknown)');
+    const rules = await prisma.igRule.findMany({ where: { id: { in: ids } } });
+    const info = new Map(rules.map(r => [r.id, { keyword: r.keyword }]));
+
+    const items = Array.from(map.entries())
+      .map(([ruleId, count]) => ({ ruleId, count, keyword: info.get(ruleId)?.keyword || '' }))
+      .sort((a,b) => b.count - a.count);
+
+    return { items, total: events.length };
+  });
+}
+
+// локальная утилита (скопируй реализацию, как в routes/ig.ts)
+async function sendIGText(userPSID: string, text: string, quickReplies?: string[]) {
+  const token = process.env.PAGE_ACCESS_TOKEN || '';
+  if (!token) throw new Error('PAGE_ACCESS_TOKEN is not set');
+
+  const payload: any = { recipient: { id: userPSID }, message: { text } };
+  if (Array.isArray(quickReplies) && quickReplies.length) {
+    payload.message.quick_replies = quickReplies.slice(0, 11).map((title) => ({
+      content_type: 'text',
+      title: String(title).slice(0, 20),
+      payload: `QR:${title}`,
+    }));
+  }
+
+  const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.text().catch(() => '');
+    throw new Error(`IG send error ${r.status}: ${err}`);
+  }
 }
 
