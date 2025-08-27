@@ -143,3 +143,11 @@ export async function igSaveSettings({ tz, quietStart, quietEnd, quickReplies })
   return r.json();
 }
 
+// IG Stats
+export async function igQuickStats(params = {}) {
+  const q = new URLSearchParams(params).toString();
+  const r = await fetch(`/api/ig/stats/quick${q ? `?${q}` : ''}`);
+  if (!r.ok) throw new Error('quick stats fetch failed');
+  return r.json();
+}
+
