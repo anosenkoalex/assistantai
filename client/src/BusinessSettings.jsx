@@ -1,79 +1,80 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { getSettings, testKey, saveKey, listModels } from './api';
 
 export default function BusinessSettings() {
-  const [description, setDescription] = useState('');
-  const [faq, setFaq] = useState('');
-  const [tone, setTone] = useState('');
+  const [hasKey, setHasKey] = useState(false);
+  const [model, setModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [models, setModels] = useState([]);
   const [status, setStatus] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/admin/business-data');
-        if (res.ok) {
-          const data = await res.json();
-          setDescription(data.description || '');
-          setFaq(data.faq || '');
-          setTone(data.tone || '');
-        }
-      } catch (err) {
-        console.error('Failed to load business data', err);
+        const s = await getSettings();
+        setHasKey(!!s.hasKey);
+        setModel(s.model || '');
+      } catch {
+        setStatus('Ошибка загрузки настроек');
+      }
+      try {
+        const m = await listModels();
+        const names = Array.isArray(m.data) ? m.data.map(x => x.id).filter(Boolean) : [];
+        setModels(names);
+      } catch {
+        // если ключа нет/невалиден — список моделей может не прийти
       }
     })();
   }, []);
 
-  const save = async () => {
+  const onTest = async (e) => {
+    e.preventDefault();
+    setStatus('Проверяем ключ…');
+    const res = await testKey(apiKey || undefined);
+    setStatus(res.valid ? 'Ключ валидный ✅' : `Ключ не прошёл проверку ❌: ${res.error || ''}`);
+  };
+
+  const onSave = async (e) => {
+    e.preventDefault();
+    setStatus('Сохраняем…');
     try {
-      const res = await fetch('/api/admin/business-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description, faq, tone }),
-      });
-      if (res.ok) {
-        setStatus('Сохранено');
-      } else {
-        setStatus('Ошибка');
-      }
-    } catch (err) {
-      console.error('Failed to save business data', err);
-      setStatus('Ошибка');
+      await saveKey({ apiKey: apiKey || undefined, model: model || undefined });
+      setStatus('Сохранено ✅');
+      setHasKey(true);
+      setApiKey('');
+    } catch {
+      setStatus('Не удалось сохранить ❌');
     }
-    setTimeout(() => setStatus(''), 3000);
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
-      <h2>Настройки бизнеса</h2>
-      <div>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Описание бизнеса"
-          rows={3}
-          style={{ width: '100%' }}
-        />
-      </div>
-      <div style={{ marginTop: '10px' }}>
-        <textarea
-          value={faq}
-          onChange={(e) => setFaq(e.target.value)}
-          placeholder="FAQ"
-          rows={5}
-          style={{ width: '100%' }}
-        />
-      </div>
-      <div style={{ marginTop: '10px' }}>
-        <input
-          value={tone}
-          onChange={(e) => setTone(e.target.value)}
-          placeholder="Тон общения"
-          style={{ width: '100%' }}
-        />
-      </div>
-      <button type="button" onClick={save} style={{ marginTop: '10px' }}>
-        Сохранить
-      </button>
-      {status && <span style={{ marginLeft: '10px' }}>{status}</span>}
+    <div style={{ maxWidth: 560, margin: '40px auto', padding: 16 }}>
+      <h2>Настройки OpenAI</h2>
+      <p>Статус: {hasKey ? 'Ключ установлен' : 'Ключ не задан'}</p>
+      <form onSubmit={onSave}>
+        <div style={{ marginBottom: 12 }}>
+          <label>API Key (не сохраняем пустую строку)</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            style={{ width: '100%', padding: 8 }}
+          />
+          <button onClick={onTest} style={{ marginTop: 8, marginRight: 8 }} type="button">Проверить ключ</button>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label>Модель по умолчанию</label>
+          <select value={model} onChange={e => setModel(e.target.value)} style={{ width: '100%', padding: 8 }}>
+            <option value="">(использовать DEFAULT_MODEL из .env)</option>
+            {models.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <button type="submit">Сохранить</button>
+      </form>
+      <div style={{ marginTop: 12, minHeight: 24 }}>{status}</div>
     </div>
   );
 }
