@@ -7,6 +7,7 @@ import IgDialogs from './IgDialogs';
 import IgSettings from './IgSettings';
 import IgStats from './IgStats';
 import IgRuleStats from './IgRuleStats';
+import Flows from './Flows';
 
 export default function App() {
   const [tab, setTab] = useState('chat');
@@ -30,6 +31,7 @@ export default function App() {
         <button onClick={() => setTab('ig_settings')}>IG Settings</button>
         <button onClick={() => setTab('ig_stats')}>IG Stats</button>
         <button onClick={() => setTab('ig_rule_stats')}>IG Rule Stats</button>
+        <button onClick={() => setTab('flows')}>Flows</button>
       </nav>
       {tab === 'chat' && <Chat />}
       {tab === 'settings' && <BusinessSettings />}
@@ -38,6 +40,7 @@ export default function App() {
       {tab === 'ig_settings' && <IgSettings />}
       {tab === 'ig_stats' && <IgStats />}
       {tab === 'ig_rule_stats' && <IgRuleStats />}
+      {tab === 'flows' && <Flows />}
     </div>
   );
 }

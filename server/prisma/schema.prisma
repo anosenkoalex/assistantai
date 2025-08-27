@@ -78,3 +78,38 @@ model Usage {
   costUsd         Float    @default(0)
   createdAt       DateTime @default(now())
 }
+
+model Flow {
+  id         String   @id @default(cuid())
+  name       String
+  active     Boolean  @default(true)
+  entry      String   // id шага-входа
+  nodes      Json     // { [id]: { type, text?, quick?, next?, waitSec? ... } }
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  triggers   FlowTrigger[]
+}
+
+model FlowTrigger {
+  id        String   @id @default(cuid())
+  flowId    String
+  flow      Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  kind      String   // "keyword"
+  value     String   // например "купить", регистронезависимо
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FlowState {
+  id         String   @id @default(cuid())
+  contactId  String
+  threadId   String
+  flowId     String
+  nodeId     String
+  status     String   @default("running") // running | done | paused
+  resumeAt   DateTime?
+  payload    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
