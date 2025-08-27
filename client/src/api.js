@@ -241,3 +241,13 @@ export async function flowTriggerUpdate(id, data) {
   return r.json();
 }
 
+export async function flowRunBatch(id, body) {
+  const r = await fetch(`/api/flows/${id}/run`, {
+    method:'POST',
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
+    body: JSON.stringify(body || {})
+  });
+  if (!r.ok) throw new Error('flow run batch failed');
+  return r.json();
+}
+

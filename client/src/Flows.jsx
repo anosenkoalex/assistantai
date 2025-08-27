@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { flowsList, flowsCreate, flowsUpdate, flowTriggers, flowTriggerCreate, flowTriggerToggle, flowExport, flowImport, flowTriggerUpdate } from './api';
+import { flowsList, flowsCreate, flowsUpdate, flowTriggers, flowTriggerCreate, flowTriggerToggle, flowExport, flowImport, flowTriggerUpdate, flowRunBatch } from './api';
+import FlowGraph from './FlowGraph';
 
 // Predefined flow templates
 const PRESETS = [
@@ -60,6 +61,10 @@ export default function Flows() {
   const [tEnd, setTEnd] = useState('');
   const [tDaysMask, setTDaysMask] = useState('');
   const [preset, setPreset] = useState(PRESETS[0]);
+  const [segStatus, setSegStatus] = useState('');
+  const [segSince, setSegSince] = useState('');
+  const [segLimit, setSegLimit] = useState(200);
+  const [batchMsg, setBatchMsg] = useState('');
 
   async function load() {
     const list = await flowsList();
@@ -130,6 +135,8 @@ export default function Flows() {
         <div style={{ display: 'grid', gap: 8 }}>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Название" />
           <input value={entry} onChange={e => setEntry(e.target.value)} placeholder="ID стартового шага, напр. start" />
+          <FlowGraph value={sel ? sel.nodes : JSON.parse(nodes || '{}')}
+                     onChange={(v)=> setNodes(JSON.stringify(v, null, 2))} />
           <textarea rows={20} value={nodes} onChange={e => setNodes(e.target.value)} style={{ width: '100%', fontFamily: 'monospace' }} />
           <button onClick={save} disabled={!sel}>Сохранить</button>
         </div>
@@ -186,6 +193,34 @@ export default function Flows() {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {sel && (
+          <div style={{ marginTop:16, paddingTop:12, borderTop:'1px dashed #ccc' }}>
+            <h4>Batch run (рассылка по сегменту)</h4>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+              <label>Status</label>
+              <select value={segStatus} onChange={e=>setSegStatus(e.target.value)}>
+                <option value="">(любой)</option>
+                <option value="bot">bot</option>
+                <option value="manager">manager</option>
+                <option value="muted">muted</option>
+              </select>
+              <label>activeSince</label>
+              <input type="datetime-local" value={segSince} onChange={e=>setSegSince(e.target.value)} />
+              <label>limit</label>
+              <input type="number" min="1" value={segLimit} onChange={e=>setSegLimit(e.target.value)} style={{ width:90 }} />
+              <button onClick={async ()=>{
+                const res = await flowRunBatch(sel.id, {
+                  status: segStatus || undefined,
+                  activeSince: segSince || undefined,
+                  limit: Number(segLimit)||200
+                });
+                setBatchMsg(`Запущено: ${res.started} из ${res.total}`);
+              }}>Run</button>
+              <span>{batchMsg}</span>
             </div>
           </div>
         )}

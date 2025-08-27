@@ -56,6 +56,9 @@ export async function registerIGRoutes(app: FastifyInstance) {
           for (const change of entry.changes ?? []) {
             const value = change.value || {};
             const messages: IGMessaging[] = value.messaging || value.messages || [];
+            if (value.story) {
+              messages.push({ message: {}, story: value.story } as any);
+            }
 
             for (const m of messages) {
               const userId = m.sender?.id;
@@ -126,7 +129,9 @@ export async function registerIGRoutes(app: FastifyInstance) {
               }
 
               // 3) по referral (если есть postback/referral payload)
-              const refPayload = (m as any)?.postback?.payload || (m as any)?.referral?.ref;
+              const storyReferral = (m as any)?.message?.referral;
+              const isStoryMention = storyReferral?.source === 'STORY_MENTION' || !!(value?.story);
+              const refPayload = storyReferral?.ref || storyReferral?.ad_id || (m as any)?.postback?.payload;
               if (!matched && refPayload) {
                 matched = trgs.find(t =>
                   t.kind === 'referral' &&
@@ -136,7 +141,6 @@ export async function registerIGRoutes(app: FastifyInstance) {
               }
 
               // 4) story mention (Meta может прислать как отдельный тип change/value)
-              const isStoryMention = !!(m as any)?.story_mention; // заглушка под будущие события
               if (!matched && isStoryMention) {
                 matched = trgs.find(t => t.kind === 'story_mention' && isTriggerActive(t, now));
               }

@@ -13,6 +13,7 @@ import { registerIgRulesRoutes } from './routes/igRules.js';
 import { registerIgAdminRoutes } from './routes/igAdmin.js';
 import { registerIgSettingsRoutes } from './routes/igSettings.js';
 import { registerFlowRoutes } from './routes/flows.js';
+import { registerFlowBatchRoutes } from './routes/flowBatch.js';
 import { runFlowTicker } from './jobs/flowTicker.js';
 
 const app = Fastify({ logger });
@@ -35,6 +36,7 @@ await registerIgRulesRoutes(app);
 await registerIgAdminRoutes(app);
 await registerIgSettingsRoutes(app);
 await registerFlowRoutes(app);
+await registerFlowBatchRoutes(app);
 
 const port = Number(process.env.API_PORT ?? 8787);
 app.listen({ port, host: '0.0.0.0' }).then(() => {
