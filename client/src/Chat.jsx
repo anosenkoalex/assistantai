@@ -1,164 +1,73 @@
-import { useState, useRef, useEffect } from 'react'
-import './App.css'
+import React, { useState, useRef } from 'react';
+import { streamChat } from './api';
 
-function Chat() {
-  const [message, setMessage] = useState('')
-  const [messages, setMessages] = useState([])
-  const bottomRef = useRef(null)
+export default function Chat() {
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: 'Привет! Введи вопрос.' }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef(null);
 
-  const [businessDescription, setBusinessDescription] = useState('')
-  const [productInput, setProductInput] = useState('')
-  const [products, setProducts] = useState([])
-  const [faqQuestion, setFaqQuestion] = useState('')
-  const [faqAnswer, setFaqAnswer] = useState('')
-  const [faqList, setFaqList] = useState([])
-  const [saveStatus, setSaveStatus] = useState('')
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const msg = { role: 'user', content: input.trim() };
+    setMessages(prev => [...prev, msg, { role: 'assistant', content: '' }]);
+    setInput('');
+    setLoading(true);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const base = messages.concat(msg).filter(Boolean);
+    let acc = '';
 
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const res = await fetch('/api/knowledge')
-        if (res.ok) {
-          const data = await res.json()
-          setBusinessDescription(data.businessDescription || '')
-          setProducts(data.products || [])
-          setFaqList(data.faq || [])
+    await streamChat(
+      { messages: base, model: undefined, temperature: 0.7, system: undefined },
+      {
+        onDelta: (chunk) => {
+          acc += chunk;
+          setMessages(prev => {
+            const copy = [...prev];
+            copy[copy.length - 1] = { role: 'assistant', content: acc };
+            return copy;
+          });
+          scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
+        },
+        onDone: () => setLoading(false),
+        onError: (e) => {
+          setLoading(false);
+          setMessages(prev => [
+            ...prev,
+            { role: 'assistant', content: `Ошибка: ${e.message || e}` }
+          ]);
         }
-      } catch (err) {
-        console.error('Failed to load knowledge', err)
       }
-    })()
-  }, [])
-
-  const sendMessage = async (e) => {
-    e.preventDefault()
-    const text = message.trim()
-    if (!text) return
-
-    const userMessage = { role: 'user', content: text }
-    setMessages((c) => [...c, userMessage])
-    setMessage('')
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages, userMessage] })
-      })
-      const data = await res.json()
-      if (data.reply) {
-        setMessages((c) => [...c, { role: 'assistant', content: data.reply }])
-      }
-    } catch (err) {
-      console.error('Error sending message', err)
-    }
-  }
-
-  const addProduct = () => {
-    const text = productInput.trim()
-    if (!text) return
-    setProducts((c) => [...c, text])
-    setProductInput('')
-  }
-
-  const addFaq = () => {
-    const q = faqQuestion.trim()
-    const a = faqAnswer.trim()
-    if (!q || !a) return
-    setFaqList((c) => [...c, { question: q, answer: a }])
-    setFaqQuestion('')
-    setFaqAnswer('')
-  }
-
-  const saveKnowledge = async () => {
-    try {
-      const res = await fetch('/api/knowledge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessDescription, products, faq: faqList })
-      })
-      if (res.ok) {
-        setSaveStatus('Сохранено')
-      } else {
-        setSaveStatus('Ошибка')
-      }
-    } catch (err) {
-      console.error('Failed to save knowledge', err)
-      setSaveStatus('Ошибка')
-    }
-    setTimeout(() => setSaveStatus(''), 3000)
-  }
+    );
+  };
 
   return (
-    <div className="App">
-      <div style={{ border: '1px solid #555', padding: '10px', marginBottom: '20px' }}>
-        <h3>База знаний</h3>
-        <textarea
-          value={businessDescription}
-          onChange={(e) => setBusinessDescription(e.target.value)}
-          placeholder="Описание бизнеса"
-          rows={3}
-          style={{ width: '100%' }}
-        />
-        <div style={{ marginTop: '10px' }}>
-          <input
-            value={productInput}
-            onChange={(e) => setProductInput(e.target.value)}
-            placeholder="Добавить товар"
-          />
-          <button type="button" onClick={addProduct}>+</button>
-          <ul>
-            {products.map((p, i) => (
-              <li key={i}>{p}</li>
-            ))}
-          </ul>
-        </div>
-        <div style={{ marginTop: '10px' }}>
-          <input
-            value={faqQuestion}
-            onChange={(e) => setFaqQuestion(e.target.value)}
-            placeholder="Вопрос"
-          />
-          <input
-            value={faqAnswer}
-            onChange={(e) => setFaqAnswer(e.target.value)}
-            placeholder="Ответ"
-          />
-          <button type="button" onClick={addFaq}>Добавить</button>
-          <ul>
-            {faqList.map((f, i) => (
-              <li key={i}>{f.question} - {f.answer}</li>
-            ))}
-          </ul>
-        </div>
-        <button type="button" onClick={saveKnowledge}>Сохранить базу знаний</button>
-        {saveStatus && <span style={{ marginLeft: '10px' }}>{saveStatus}</span>}
-      </div>
-      <form onSubmit={sendMessage} className="form">
-        <input
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Введите сообщение"
-        />
-        <button type="submit">Отправить</button>
-      </form>
-      <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '10px' }}>
-        {messages.map((m, idx) => (
-          <div
-            key={idx}
-            style={{ margin: '10px 0', color: m.role === 'user' ? '#0f0' : '#0ff' }}
-          >
-            <strong>{m.role === 'user' ? 'Вы' : 'Ассистент'}:</strong> {m.content}
+    <div style={{ maxWidth: 800, margin: '20px auto', display: 'flex', flexDirection: 'column', height: '80vh' }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{
+            margin: '8px 0', padding: 8, borderRadius: 6,
+            background: m.role === 'user' ? '#eef' : '#f6f6f6'
+          }}>
+            <b>{m.role === 'user' ? 'Вы' : 'Ассистент'}:</b> {m.content}
           </div>
         ))}
-        <div ref={bottomRef} />
+        {loading && <div style={{ opacity: 0.6 }}>Генерация…</div>}
       </div>
-      <button onClick={() => setMessages([])}>Очистить чат</button>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && send()}
+          placeholder="Спросите что-нибудь…"
+          style={{ flex: 1, padding: 10 }}
+        />
+        <button onClick={send} disabled={loading}>Отправить</button>
+      </div>
     </div>
-  )
+  );
 }
 
-export default Chat
