@@ -1,4 +1,7 @@
 import type { FastifyInstance } from 'fastify';
+import { prisma } from '../prisma.js';
+import { applyRules } from '../services/igRules.js';
+import { notifyManager } from '../services/notify.js';
 
 type IGMessaging = {
   sender?: { id?: string };      // IG user PSID
@@ -14,7 +17,7 @@ type IGMessaging = {
 };
 
 export async function registerIGRoutes(app: FastifyInstance) {
-  // GET: верификация вебхука (оставь как было)
+  // GET: верификация вебхука
   app.get('/api/ig/webhook', async (req, reply) => {
     const q = (req.query ?? {}) as Record<string, any>;
     const mode = q['hub.mode'] || q.hub_mode;
@@ -32,7 +35,6 @@ export async function registerIGRoutes(app: FastifyInstance) {
     const body = req.body as any;
 
     try {
-      // Meta присылает object: 'instagram' (или 'page') с entry[].changes[].value.messages[]
       if (body?.object === 'instagram' || body?.object === 'page') {
         for (const entry of body.entry ?? []) {
           for (const change of entry.changes ?? []) {
@@ -44,12 +46,87 @@ export async function registerIGRoutes(app: FastifyInstance) {
               const pageId = m.recipient?.id;
               const text = m.message?.text?.trim();
 
+              if (!userId) continue;
+
+              // 1) Убедиться, что контакт существует
+              const contact = await prisma.igContact.upsert({
+                where: { igUserId: String(userId) },
+                create: { igUserId: String(userId), status: 'bot' },
+                update: { updatedAt: new Date() }
+              });
+
+              // 2) Найти или создать активный тред
+              let thread = await prisma.igThread.findFirst({
+                where: { contactId: contact.id, state: 'active' },
+                orderBy: { updatedAt: 'desc' }
+              });
+              if (!thread) {
+                thread = await prisma.igThread.create({
+                  data: { contactId: contact.id, pageId: pageId ?? undefined }
+                });
+              }
+
+              // 3) Записать входящее событие
+              await prisma.igEvent.create({
+                data: {
+                  threadId: thread.id,
+                  direction: 'in',
+                  type: m.message?.text ? 'text' : m.postback ? 'postback' : 'system',
+                  text: text ?? undefined,
+                  payload: m as any
+                }
+              });
+
               app.log.info({ userId, pageId, text }, 'IG inbound');
 
-              // Временный «движок»: эхо-ответ для проверки пайплайна
-              if (userId && text) {
-                await sendIGText(userId, `Получил: "${text}"`);
+              // 4) Применить правила
+              const res = await applyRules({ contactId: contact.id, text });
+
+              // 5) Ветвление по действию
+              if (res.action === 'mute') {
+                // Ничего не отправляем пользователю? Можно подтвердить отписку
+                if (res.reply) {
+                  await sendIGText(userId, res.reply);
+                  await prisma.igEvent.create({
+                    data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
+                  });
+                }
+                continue;
               }
+
+              if (res.action === 'handoff') {
+                // Уведомить менеджера и подтвердить пользователю
+                await notifyManager({ userId: String(userId), text: text || '' });
+                if (res.reply) {
+                  await sendIGText(userId, res.reply);
+                  await prisma.igEvent.create({
+                    data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
+                  });
+                }
+                continue;
+              }
+
+              if (res.action === 'night') {
+                // Вежливо сообщить про нерабочее время
+                if (res.reply) {
+                  await sendIGText(userId, res.reply);
+                  await prisma.igEvent.create({
+                    data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
+                  });
+                }
+                continue;
+              }
+
+              if (res.action === 'greet') {
+                const reply = res.reply;
+                await sendIGText(userId, reply);
+                await prisma.igEvent.create({
+                  data: { threadId: thread.id, direction: 'out', type: 'text', text: reply }
+                });
+                continue;
+              }
+
+              // res.action === 'none' → ничего не делаем
             }
           }
         }
@@ -58,26 +135,20 @@ export async function registerIGRoutes(app: FastifyInstance) {
       app.log.error(e, 'IG webhook error');
     }
 
-    // Важно отвечать 200 быстро, иначе Meta ретраит
     return reply.code(200).send('ok');
   });
 
-  // Ручная подписка на вебхук (выполняется один раз при настройке)
+  // Подписка страницы на сообщения
   app.post('/api/ig/subscribe', async (_req, reply) => {
     const pageId = process.env.FB_PAGE_ID || '';
     const token = process.env.PAGE_ACCESS_TOKEN || '';
-
     if (!pageId || !token) {
       return reply.code(400).send({ error: 'Missing FB_PAGE_ID or PAGE_ACCESS_TOKEN' });
     }
-
     const url = `https://graph.facebook.com/v19.0/${pageId}/subscribed_apps?access_token=${encodeURIComponent(token)}`;
     const r = await fetch(url, { method: 'POST' });
     const data = await r.json().catch(() => ({}));
-
-    if (!r.ok) {
-      return reply.code(500).send({ error: 'subscribe failed', data });
-    }
+    if (!r.ok) return reply.code(500).send({ error: 'subscribe failed', data });
     return { ok: true, data };
   });
 }
