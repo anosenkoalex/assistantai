@@ -1,4 +1,5 @@
 import { prisma } from '../prisma.js';
+import { inQuietHours } from './time.js';
 
 export type RuleResult =
   | { action: 'mute'; reply?: string }
@@ -6,11 +7,6 @@ export type RuleResult =
   | { action: 'night'; reply?: string }
   | { action: 'greet'; reply: string }
   | { action: 'none' };
-
-function isNight(now = new Date()) {
-  const hour = now.getHours();
-  return hour < 9 || hour >= 21; // 21:00–09:00 — «тихий» период
-}
 
 function isStop(text?: string) {
   if (!text) return false;
@@ -69,10 +65,14 @@ export async function applyRules({
     return { action: 'handoff', reply: 'Передал ваш диалог менеджеру. Он скоро ответит.' };
   }
 
-  // 3) Ночной режим
+  // 3) Ночной режим из настроек
   const contact = await prisma.igContact.findUnique({ where: { id: contactId } });
-  if (contact && contact.status === 'bot' && isNight(now)) {
-    return { action: 'night', reply: 'Спасибо за сообщение! Сейчас нерабочее время — мы ответим утром.' };
+  const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
+  const tz = settings?.tz || 'Asia/Bishkek';
+  const qStart = settings?.quietStart || '21:00';
+  const qEnd = settings?.quietEnd || '09:00';
+  if (contact && contact.status === 'bot' && inQuietHours(now, tz, qStart, qEnd)) {
+    return { action: 'night', reply: 'Спасибо за сообщение! Мы ответим в рабочее время.' };
   }
 
   // 4) Поиск по ключевым словам (IgRule)

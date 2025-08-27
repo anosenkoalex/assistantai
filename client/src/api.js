@@ -127,3 +127,19 @@ export async function igToggleRule(id) {
   return r.json();
 }
 
+// IG Settings
+export async function igGetSettings() {
+  const r = await fetch('/api/ig/settings');
+  if (!r.ok) throw new Error('ig settings fetch failed');
+  return r.json();
+}
+export async function igSaveSettings({ tz, quietStart, quietEnd, quickReplies }) {
+  const r = await fetch('/api/ig/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({ tz, quietStart, quietEnd, quickReplies })
+  });
+  if (!r.ok) throw new Error('ig settings save failed');
+  return r.json();
+}
+

@@ -109,7 +109,9 @@ export async function registerIGRoutes(app: FastifyInstance) {
               if (res.action === 'night') {
                 // Вежливо сообщить про нерабочее время
                 if (res.reply) {
-                  await sendIGText(userId, res.reply);
+                  const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
+                  const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
+                  await sendIGText(userId, res.reply, quick);
                   await prisma.igEvent.create({
                     data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
                   });
@@ -119,7 +121,9 @@ export async function registerIGRoutes(app: FastifyInstance) {
 
               if (res.action === 'greet') {
                 const reply = res.reply;
-                await sendIGText(userId, reply);
+                const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
+                const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
+                await sendIGText(userId, reply, quick);
                 await prisma.igEvent.create({
                   data: { threadId: thread.id, direction: 'out', type: 'text', text: reply }
                 });
@@ -154,18 +158,28 @@ export async function registerIGRoutes(app: FastifyInstance) {
 }
 
 // Отправка текста пользователю через Page Access Token
-async function sendIGText(userPSID: string, text: string) {
+async function sendIGText(userPSID: string, text: string, quickReplies?: string[]) {
   const token = process.env.PAGE_ACCESS_TOKEN || '';
   if (!token) throw new Error('PAGE_ACCESS_TOKEN is not set');
+
+  const payload: any = {
+    recipient: { id: userPSID },
+    message: { text }
+  };
+
+  if (Array.isArray(quickReplies) && quickReplies.length) {
+    payload.message.quick_replies = quickReplies.slice(0, 11).map((title) => ({
+      content_type: 'text',
+      title: String(title).slice(0, 20),
+      payload: `QR:${title}`
+    }));
+  }
 
   const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`;
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      recipient: { id: userPSID },
-      message: { text }
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!r.ok) {
