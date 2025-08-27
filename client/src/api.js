@@ -1,3 +1,8 @@
+function authHeaders() {
+  const t = localStorage.getItem('ADMIN_TOKEN') || '';
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
 export async function getSettings() {
   const r = await fetch('/api/settings/openai');
   if (!r.ok) throw new Error('Settings fetch failed');
@@ -81,25 +86,25 @@ export async function streamChat({ messages, model, temperature, system }, { onD
 // IG Admin
 export async function igListContacts(params = {}) {
   const q = new URLSearchParams(params).toString();
-  const r = await fetch(`/api/ig/contacts${q ? `?${q}` : ''}`);
+  const r = await fetch(`/api/ig/contacts${q ? `?${q}` : ''}`, { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('contacts fetch failed');
   return r.json();
 }
 export async function igListThreads(contactId) {
-  const r = await fetch(`/api/ig/threads?contactId=${encodeURIComponent(contactId)}`);
+  const r = await fetch(`/api/ig/threads?contactId=${encodeURIComponent(contactId)}`, { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('threads fetch failed');
   return r.json();
 }
 export async function igListEvents(threadId, params = {}) {
   const q = new URLSearchParams({ ...params, threadId }).toString();
-  const r = await fetch(`/api/ig/events?${q}`);
+  const r = await fetch(`/api/ig/events?${q}`, { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('events fetch failed');
   return r.json();
 }
 export async function igSetContactStatus(id, status) {
   const r = await fetch(`/api/ig/contacts/${id}/status`, {
     method: 'PUT',
-    headers: { 'Content-Type':'application/json' },
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
     body: JSON.stringify({ status })
   });
   if (!r.ok) throw new Error('set status failed');
@@ -108,35 +113,35 @@ export async function igSetContactStatus(id, status) {
 
 // IG Rules (уже есть базовые)
 export async function igGetRules() {
-  const r = await fetch('/api/ig/rules');
+  const r = await fetch('/api/ig/rules', { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('rules fetch failed');
   return r.json();
 }
 export async function igCreateRule({ keyword, reply }) {
   const r = await fetch('/api/ig/rules', {
     method: 'POST',
-    headers: { 'Content-Type':'application/json' },
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
     body: JSON.stringify({ keyword, reply })
   });
   if (!r.ok) throw new Error('rule create failed');
   return r.json();
 }
 export async function igToggleRule(id) {
-  const r = await fetch(`/api/ig/rules/${id}/toggle`, { method: 'PUT' });
+  const r = await fetch(`/api/ig/rules/${id}/toggle`, { method: 'PUT', headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('rule toggle failed');
   return r.json();
 }
 
 // IG Settings
 export async function igGetSettings() {
-  const r = await fetch('/api/ig/settings');
+  const r = await fetch('/api/ig/settings', { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('ig settings fetch failed');
   return r.json();
 }
 export async function igSaveSettings({ tz, quietStart, quietEnd, quickReplies }) {
   const r = await fetch('/api/ig/settings', {
     method: 'PUT',
-    headers: { 'Content-Type':'application/json' },
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
     body: JSON.stringify({ tz, quietStart, quietEnd, quickReplies })
   });
   if (!r.ok) throw new Error('ig settings save failed');
@@ -146,7 +151,7 @@ export async function igSaveSettings({ tz, quietStart, quietEnd, quickReplies })
 // IG Stats
 export async function igQuickStats(params = {}) {
   const q = new URLSearchParams(params).toString();
-  const r = await fetch(`/api/ig/stats/quick${q ? `?${q}` : ''}`);
+  const r = await fetch(`/api/ig/stats/quick${q ? `?${q}` : ''}`, { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('quick stats fetch failed');
   return r.json();
 }
@@ -154,7 +159,7 @@ export async function igQuickStats(params = {}) {
 export async function igAdminSend({ contactId, text, quick }) {
   const r = await fetch('/api/ig/send', {
     method: 'POST',
-    headers: { 'Content-Type':'application/json' },
+    headers: { 'Content-Type':'application/json', ...authHeaders() },
     body: JSON.stringify({ contactId, text, quick })
   });
   if (!r.ok) throw new Error('send failed');
@@ -163,7 +168,7 @@ export async function igAdminSend({ contactId, text, quick }) {
 
 export async function igRuleStats(params = {}) {
   const q = new URLSearchParams(params).toString();
-  const r = await fetch(`/api/ig/stats/rules${q ? `?${q}` : ''}`);
+  const r = await fetch(`/api/ig/stats/rules${q ? `?${q}` : ''}`, { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('rule stats fetch failed');
   return r.json();
 }

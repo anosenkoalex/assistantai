@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import AdminLogin from './AdminLogin';
 import Chat from './Chat';
 import BusinessSettings from './BusinessSettings';
 import IgRules from './IgRules';
@@ -9,6 +10,15 @@ import IgRuleStats from './IgRuleStats';
 
 export default function App() {
   const [tab, setTab] = useState('chat');
+  const [authed, setAuthed] = useState(false);
+  useEffect(()=>{ setAuthed(!!localStorage.getItem('ADMIN_TOKEN')); }, []);
+
+  const adminTabs = ['ig_rules','ig_dialogs','ig_settings','ig_stats','ig_rule_stats'];
+  const needAuth = adminTabs.includes(tab);
+
+  if (needAuth && !authed) {
+    return <AdminLogin onLoggedIn={()=>setAuthed(true)} />;
+  }
 
   return (
     <div>

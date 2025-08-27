@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
 import { applyRules } from '../services/igRules.js';
 import { notifyManager } from '../services/notify.js';
+import { requireAdmin } from '../mw/auth.js';
 
 type IGMessaging = {
   sender?: { id?: string };      // IG user PSID
@@ -206,7 +207,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
   });
 
   // Подписка страницы на сообщения
-  app.post('/api/ig/subscribe', async (_req, reply) => {
+  app.post('/api/ig/subscribe', { preHandler: requireAdmin }, async (_req, reply) => {
     const pageId = process.env.FB_PAGE_ID || '';
     const token = process.env.PAGE_ACCESS_TOKEN || '';
     if (!pageId || !token) {

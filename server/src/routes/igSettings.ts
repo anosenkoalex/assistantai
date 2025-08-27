@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
+import { requireAdmin } from '../mw/auth.js';
 
 export async function registerIgSettingsRoutes(app: FastifyInstance) {
+  app.addHook('onRequest', (req, reply, done) => requireAdmin(req, reply, done));
   app.get('/api/ig/settings', async () => {
     const s = await prisma.igSetting.findUnique({ where: { id: 1 } });
     if (!s) {
