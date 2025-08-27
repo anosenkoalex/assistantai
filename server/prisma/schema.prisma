@@ -94,9 +94,18 @@ model FlowTrigger {
   id        String   @id @default(cuid())
   flowId    String
   flow      Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
-  kind      String   // "keyword"
-  value     String   // например "купить", регистронезависимо
+
+  kind      String   // "keyword" | "quick" | "story_mention" | "referral" | "any"
+  value     String   // для keyword/quick/referral (payload/текст); для "any" оставить пустым
+
+  // временные ограничения (опционально)
   active    Boolean  @default(true)
+  startAt   DateTime?
+  endAt     DateTime?
+  daysMask  Int?     // битовая маска дней недели: 1=Mon,2=Tue,...,64=Sun; например 127=все дни
+
+  meta      Json?    // запасное поле для будущих условий
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

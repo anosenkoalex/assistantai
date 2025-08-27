@@ -28,14 +28,69 @@ export async function registerFlowRoutes(app: FastifyInstance) {
   });
   app.post('/api/flows/:id/triggers', async (req, reply) => {
     const { id } = req.params as any;
-    const { kind, value } = req.body as any;
-    if (!kind || !value) return reply.code(400).send({ error: 'kind and value required' });
-    return prisma.flowTrigger.create({ data: { flowId: id, kind, value } });
+    const { kind, value, startAt, endAt, daysMask, meta } = req.body as any;
+    if (!kind) return reply.code(400).send({ error: 'kind required' });
+    return prisma.flowTrigger.create({
+      data: {
+        flowId: id,
+        kind,
+        value: value ?? '',
+        startAt: startAt ? new Date(startAt) : undefined,
+        endAt: endAt ? new Date(endAt) : undefined,
+        daysMask: typeof daysMask === 'number' ? daysMask : undefined,
+        meta: meta ?? undefined
+      }
+    });
+  });
+  app.put('/api/flow-triggers/:tid', async (req, reply) => {
+    const { tid } = req.params as any;
+    const body = req.body as any;
+    const data: any = {};
+    for (const k of ['kind','value','startAt','endAt','daysMask','active','meta']) {
+      if (k in body) data[k] = body[k];
+    }
+    if (data.startAt) data.startAt = new Date(data.startAt);
+    if (data.endAt) data.endAt = new Date(data.endAt);
+    return prisma.flowTrigger.update({ where: { id: tid }, data });
   });
   app.put('/api/flow-triggers/:tid/toggle', async (req, reply) => {
     const { tid } = req.params as any;
     const trg = await prisma.flowTrigger.findUnique({ where: { id: tid } });
     if (!trg) return reply.code(404).send({ error: 'not found' });
     return prisma.flowTrigger.update({ where: { id: tid }, data: { active: !trg.active } });
+  });
+
+  app.get('/api/flows/:id/export', async (req, reply) => {
+    const { id } = req.params as any;
+    const flow = await prisma.flow.findUnique({ where: { id } });
+    if (!flow) return reply.code(404).send({ error: 'not found' });
+    const triggers = await prisma.flowTrigger.findMany({ where: { flowId: id } });
+    return { flow, triggers };
+  });
+
+  app.post('/api/flows/import', async (req, reply) => {
+    const { flow, triggers } = req.body as any;
+    if (!flow || !flow.name || !flow.entry || !flow.nodes) {
+      return reply.code(400).send({ error: 'invalid flow payload' });
+    }
+    const created = await prisma.flow.create({
+      data: { name: flow.name, entry: flow.entry, nodes: flow.nodes, active: !!flow.active }
+    });
+    if (Array.isArray(triggers)) {
+      for (const t of triggers) {
+        await prisma.flowTrigger.create({
+          data: {
+            flowId: created.id,
+            kind: t.kind, value: t.value ?? '',
+            active: t.active ?? true,
+            startAt: t.startAt ? new Date(t.startAt) : undefined,
+            endAt: t.endAt ? new Date(t.endAt) : undefined,
+            daysMask: typeof t.daysMask === 'number' ? t.daysMask : undefined,
+            meta: t.meta ?? undefined
+          }
+        });
+      }
+    }
+    return { ok: true, id: created.id };
   });
 }
