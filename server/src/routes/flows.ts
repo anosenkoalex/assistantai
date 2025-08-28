@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
 import { requireRole } from '../mw/auth.js';
+import { jstr, jparse } from '../utils/json.js';
 
 export async function registerFlowRoutes(app: FastifyInstance) {
   app.addHook('onRequest', (req, reply, done) => requireRole('admin')(req, reply, done));
@@ -9,12 +10,14 @@ export async function registerFlowRoutes(app: FastifyInstance) {
   app.post('/api/flows', async (req, reply) => {
     const { name, entry, nodes } = req.body as any;
     if (!name || !entry || !nodes) return reply.code(400).send({ error: 'name, entry, nodes required' });
-    return prisma.flow.create({ data: { name, entry, nodes } });
+    const nodesStr = typeof nodes === 'string' ? nodes : JSON.stringify(nodes);
+    return prisma.flow.create({ data: { name, entry, nodes: nodesStr, active: true } });
   });
   app.put('/api/flows/:id', async (req, reply) => {
     const { id } = req.params as any;
     const { name, entry, nodes, active } = req.body as any;
-    return prisma.flow.update({ where: { id }, data: { name, entry, nodes, active } });
+    const nodesStr = typeof nodes === 'string' ? nodes : JSON.stringify(nodes);
+    return prisma.flow.update({ where: { id }, data: { name, entry, nodes: nodesStr, active } });
   });
   app.delete('/api/flows/:id', async (req, reply) => {
     const { id } = req.params as any;
@@ -38,7 +41,7 @@ export async function registerFlowRoutes(app: FastifyInstance) {
         startAt: startAt ? new Date(startAt) : undefined,
         endAt: endAt ? new Date(endAt) : undefined,
         daysMask: typeof daysMask === 'number' ? daysMask : undefined,
-        meta: meta ?? undefined
+        meta: jstr(meta)
       }
     });
   });
@@ -47,7 +50,7 @@ export async function registerFlowRoutes(app: FastifyInstance) {
     const body = req.body as any;
     const data: any = {};
     for (const k of ['kind','value','startAt','endAt','daysMask','active','meta']) {
-      if (k in body) data[k] = body[k];
+      if (k in body) data[k] = k === 'meta' ? jstr(body[k]) : body[k];
     }
     if (data.startAt) data.startAt = new Date(data.startAt);
     if (data.endAt) data.endAt = new Date(data.endAt);
@@ -65,7 +68,7 @@ export async function registerFlowRoutes(app: FastifyInstance) {
     const flow = await prisma.flow.findUnique({ where: { id } });
     if (!flow) return reply.code(404).send({ error: 'not found' });
     const triggers = await prisma.flowTrigger.findMany({ where: { flowId: id } });
-    return { flow, triggers };
+    return { flow: { ...flow, nodes: jparse(flow?.nodes, {}) }, triggers: triggers.map(t => ({ ...t, meta: jparse(t.meta) })) };
   });
 
   app.get('/api/flows/:id/analytics', async (req) => {
@@ -89,7 +92,7 @@ export async function registerFlowRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'invalid flow payload' });
     }
     const created = await prisma.flow.create({
-      data: { name: flow.name, entry: flow.entry, nodes: flow.nodes, active: !!flow.active }
+      data: { name: flow.name, entry: flow.entry, nodes: JSON.stringify(flow.nodes), active: !!flow.active }
     });
     if (Array.isArray(triggers)) {
       for (const t of triggers) {
@@ -101,7 +104,7 @@ export async function registerFlowRoutes(app: FastifyInstance) {
             startAt: t.startAt ? new Date(t.startAt) : undefined,
             endAt: t.endAt ? new Date(t.endAt) : undefined,
             daysMask: typeof t.daysMask === 'number' ? t.daysMask : undefined,
-            meta: t.meta ?? undefined
+            meta: jstr(t.meta)
           }
         });
       }

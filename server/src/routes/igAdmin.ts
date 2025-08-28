@@ -4,6 +4,7 @@ import { requireAdmin } from '../mw/auth.js';
 import { canSend, markSent } from '../services/limits.js';
 import { igOutMessages, igErrors } from '../metrics.js';
 import { sendIGText } from './ig.js';
+import { jparse } from '../utils/json.js';
 
 export async function registerIgAdminRoutes(app: FastifyInstance) {
   app.addHook('onRequest', (req, reply, done) => requireAdmin(req, reply, done));
@@ -162,7 +163,7 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
     const events = await prisma.igEvent.findMany({ where, select: { payload: true } });
     const map = new Map<string, number>();
     for (const e of events) {
-      const id = (e.payload as any)?.ruleId || '(unknown)';
+      const id = jparse<any>(e.payload)?.ruleId || '(unknown)';
       map.set(id, (map.get(id) || 0) + 1);
     }
 
