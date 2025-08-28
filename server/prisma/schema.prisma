@@ -46,7 +46,7 @@ model IgEvent {
   direction  String   // in | out
   type       String   // text | attachment | postback | system
   text       String?
-  payload    String?  @db.Text
+  payload    String?
   extId      String?  @unique // внешний ID события (mid или event id)
   at         DateTime @default(now())
 }
@@ -96,7 +96,7 @@ model Flow {
   name       String
   active     Boolean  @default(true)
   entry      String   // id шага-входа
-  nodes      String   @db.Text  // { [id]: { type, text?, quick?, next?, waitSec? ... } }
+  nodes      String   // { [id]: { type, text?, quick?, next?, waitSec? ... } }
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   triggers   FlowTrigger[]
@@ -116,7 +116,7 @@ model FlowTrigger {
   endAt     DateTime?
   daysMask  Int?     // битовая маска дней недели: 1=Mon,2=Tue,...,64=Sun; например 127=все дни
 
-  meta      String?  @db.Text    // запасное поле для будущих условий
+  meta      String?    // запасное поле для будущих условий
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -130,7 +130,7 @@ model FlowState {
   nodeId     String
   status     String   @default("running") // running | done | paused
   resumeAt   DateTime?
-  payload    String?  @db.Text
+  payload    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
@@ -140,14 +140,14 @@ model IntegrationError {
   source    String   // 'IG_GRAPH' | 'OPENAI' | 'TELEGRAM' | 'SCHEDULER' | ...
   code      String?
   message   String?
-  meta      String?  @db.Text
+  meta      String?
   createdAt DateTime @default(now())
 }
 
 model Outbox {
   id        String   @id @default(cuid())
   type      String   // 'IG' | 'OPENAI' | 'TELEGRAM'
-  payload   String   @db.Text
+  payload   String
   status    String   @default("pending") // pending|sent|error
   attempts  Int      @default(0)
   lastError String?
