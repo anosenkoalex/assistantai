@@ -7,6 +7,7 @@ import { requireRole } from '../mw/auth.js';
 import { enqueue } from '../services/outbox.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
 import { canSend, markSent } from '../services/limits.js';
+import { postHook } from '../services/hooks.js';
 import { withTrace } from '../otel.js';
 import { canSpend } from '../services/costGuard.js';
 import { isToxic } from '../services/moderation.js';
@@ -90,11 +91,14 @@ export async function registerIGRoutes(app: FastifyInstance) {
               if (!userId) continue;
 
               // 1) Контакт
-              const contact = await prisma.igContact.upsert({
-                where: { igUserId: String(userId) },
-                create: { igUserId: String(userId), status: 'bot' },
-                update: { updatedAt: new Date() }
-              });
+              let isNewContact = false;
+              let contact = await prisma.igContact.findUnique({ where: { igUserId: String(userId) } });
+              if (!contact) {
+                contact = await prisma.igContact.create({ data: { igUserId: String(userId), status: 'bot' } });
+                isNewContact = true;
+              } else {
+                contact = await prisma.igContact.update({ where: { id: contact.id }, data: { updatedAt: new Date() } });
+              }
 
               // 2) Активный тред
               let thread = await prisma.igThread.findFirst({
@@ -105,6 +109,10 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 thread = await prisma.igThread.create({
                   data: { contactId: contact.id, pageId: pageId ?? undefined, abGroup: Math.random() < 0.5 ? 'A' : 'B' }
                 });
+              }
+
+              if (isNewContact) {
+                await postHook(process.env.HOOK_LEAD_URL, { contact, thread, ts: new Date().toISOString() });
               }
 
               // === Обычная ветка === (как было раньше)
@@ -223,6 +231,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
                   await sendIGText(userId, res.reply, undefined, thread.id);
                   await markSent(contact.id);
                 }
+                await postHook(process.env.HOOK_HANDOFF_URL, { contact, thread, ts: new Date().toISOString() });
                 continue;
               }
 

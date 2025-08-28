@@ -1,6 +1,7 @@
 import { prisma } from '../prisma.js';
 import { enqueue } from './outbox.js';
 import { canSend, markSent } from './limits.js';
+import { postHook } from './hooks.js';
 
 // Типы узлов:
 // sendText { type:'sendText', text, next? }
@@ -61,6 +62,8 @@ export async function tickFlow(stateId: string) {
   if (node.type === 'handoff') {
     await prisma.igContact.update({ where: { id: contact.id }, data: { status: 'manager' } });
     await prisma.flowState.update({ where: { id: state.id }, data: { status: 'done' }});
+    const thread = await prisma.igThread.findUnique({ where: { id: state.threadId } });
+    await postHook(process.env.HOOK_HANDOFF_URL, { contact, thread, ts: new Date().toISOString() });
     return;
   }
 

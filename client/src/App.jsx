@@ -9,6 +9,7 @@ import IgStats from './IgStats';
 import IgRuleStats from './IgRuleStats';
 import Flows from './Flows';
 import AdminErrors from './AdminErrors';
+import SetupWizard from './SetupWizard';
 
 export default function App() {
   const [tab, setTab] = useState('chat');
@@ -34,6 +35,7 @@ export default function App() {
         <button onClick={() => setTab('ig_rule_stats')}>IG Rule Stats</button>
         <button onClick={() => setTab('flows')}>Flows</button>
         <button onClick={()=>setTab('errors')}>Errors</button>
+        <button onClick={()=>setTab('setup')}>Setup</button>
       </nav>
       {tab === 'chat' && <Chat />}
       {tab === 'settings' && <BusinessSettings />}
@@ -44,6 +46,7 @@ export default function App() {
       {tab === 'ig_rule_stats' && <IgRuleStats />}
       {tab === 'flows' && <Flows />}
       {tab === 'errors' && <AdminErrors />}
+      {tab === 'setup' && <SetupWizard />}
     </div>
   );
 }
