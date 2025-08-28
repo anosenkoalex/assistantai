@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../prisma.js';
 import { applyRules } from '../services/igRules.js';
 import { notifyManager } from '../services/notify.js';
 import { requireAdmin } from '../mw/auth.js';
-import { buildThreadMessages, askOpenAI } from '../services/ai.js';
-import { estimateCostUsd } from '../services/cost.js';
+import { enqueue } from '../services/outbox.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
-import { logIntegrationError } from '../services/ilog.js';
 
 function isTriggerActive(trg: any, now = new Date()) {
   if (trg.startAt && now < new Date(trg.startAt)) return false;
@@ -26,6 +25,7 @@ type IGMessaging = {
   timestamp?: number;
   message?: {
     mid?: string;
+    id?: string;
     text?: string;
     attachments?: any[];
   };
@@ -48,7 +48,19 @@ export async function registerIGRoutes(app: FastifyInstance) {
   });
 
   // POST: основной приём событий (Instagram Messaging)
-  app.post('/api/ig/webhook', async (req, reply) => {
+  app.post('/api/ig/webhook', { config: { rawBody: true } }, async (req, reply) => {
+    const sig = (req.headers['x-hub-signature-256'] as string) || '';
+    const secret = process.env.FB_APP_SECRET || '';
+    const raw = (req as any).rawBody as Buffer | undefined;
+    if (!sig || !secret || !raw) {
+      return reply.code(401).send('invalid signature');
+    }
+    const expected = 'sha256=' + createHmac('sha256', secret).update(raw).digest('hex');
+    const valid = sig.length === expected.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    if (!valid) {
+      return reply.code(401).send('invalid signature');
+    }
+
     const body = req.body as any;
 
     try {
@@ -92,16 +104,34 @@ export async function registerIGRoutes(app: FastifyInstance) {
 
               // === Обычная ветка === (как было раньше)
 
-              // 3) Записать входящее событие
-              await prisma.igEvent.create({
-                data: {
-                  threadId: thread.id,
-                  direction: 'in',
-                  type: m.message?.text ? 'text' : m.postback ? 'postback' : 'system',
-                  text: text ?? undefined,
-                  payload: m as any
-                }
-              });
+              // 3) Записать входящее событие (идемпотентно по mid/id)
+              const extId = (m.message?.mid || (m as any).mid || (m as any).id || m.message?.id) ? String(m.message?.mid || (m as any).mid || (m as any).id || m.message?.id) : undefined;
+              if (extId) {
+                const exists = await prisma.igEvent.findUnique({ where: { extId } });
+                if (exists) continue; // уже обработано
+                await prisma.igEvent.upsert({
+                  where: { extId },
+                  create: {
+                    threadId: thread.id,
+                    direction: 'in',
+                    type: m.message?.text ? 'text' : m.postback ? 'postback' : 'system',
+                    text: text ?? undefined,
+                    payload: m as any,
+                    extId
+                  },
+                  update: {}
+                });
+              } else {
+                await prisma.igEvent.create({
+                  data: {
+                    threadId: thread.id,
+                    direction: 'in',
+                    type: m.message?.text ? 'text' : m.postback ? 'postback' : 'system',
+                    text: text ?? undefined,
+                    payload: m as any
+                  }
+                });
+              }
 
               app.log.info({ userId, pageId, text }, 'IG inbound');
 
@@ -162,37 +192,25 @@ export async function registerIGRoutes(app: FastifyInstance) {
 
               // 5) Ветвление по действию
               if (res.action === 'mute') {
-                // Ничего не отправляем пользователю? Можно подтвердить отписку
                 if (res.reply) {
-                  await sendIGText(userId, res.reply);
-                  await prisma.igEvent.create({
-                    data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
-                  });
+                  await sendIGText(userId, res.reply, undefined, thread.id);
                 }
                 continue;
               }
 
               if (res.action === 'handoff') {
-                // Уведомить менеджера и подтвердить пользователю
                 await notifyManager({ userId: String(userId), text: text || '' });
                 if (res.reply) {
-                  await sendIGText(userId, res.reply);
-                  await prisma.igEvent.create({
-                    data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
-                  });
+                  await sendIGText(userId, res.reply, undefined, thread.id);
                 }
                 continue;
               }
 
               if (res.action === 'night') {
-                // Вежливо сообщить про нерабочее время
                 if (res.reply) {
                   const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
                   const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
-                  await sendIGText(userId, res.reply, quick);
-                  await prisma.igEvent.create({
-                    data: { threadId: thread.id, direction: 'out', type: 'text', text: res.reply }
-                  });
+                  await sendIGText(userId, res.reply, quick, thread.id);
                 }
                 continue;
               }
@@ -201,40 +219,22 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
                 const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
 
-                let reply = res.reply; // дефолтный ответ правил
-
-                // Попробуем ИИ, если включен и есть входящий текст
                 if (contact.status === 'bot' && settings?.aiEnabled && text) {
                   const model = settings.aiModel || process.env.DEFAULT_MODEL || 'gpt-4o-mini';
                   const temperature = typeof settings.aiTemperature === 'number' ? settings.aiTemperature : 0.7;
-                  const msgs = await buildThreadMessages(thread.id, text, settings.systemPrompt ?? undefined, 12);
-                  try {
-                    const ai = await askOpenAI(msgs, model, temperature);
-                    if (ai.text) reply = ai.text;
-
-                    // Запишем usage при наличии
-                    if (ai.usage) {
-                      const cost = estimateCostUsd(model, ai.usage.prompt_tokens, ai.usage.completion_tokens);
-                      await prisma.usage.create({
-                        data: {
-                          userId: contact.id,
-                          model,
-                          promptTokens: ai.usage.prompt_tokens || 0,
-                          completionTokens: ai.usage.completion_tokens || 0,
-                          costUsd: cost
-                        }
-                      });
-                    }
-                  } catch (e) {
-                    app.log.error(e, 'AI reply failed; fallback to rule reply');
-                  }
+                  await enqueue('OPENAI', {
+                    threadId: thread.id,
+                    userPSID: userId,
+                    contactId: contact.id,
+                    text,
+                    model,
+                    temperature,
+                    systemPrompt: settings.systemPrompt ?? undefined,
+                    quickReplies: quick
+                  });
+                } else if (res.reply) {
+                  await sendIGText(userId, res.reply, quick, thread.id);
                 }
-
-                await sendIGText(userId, reply, quick);
-
-                await prisma.igEvent.create({
-                  data: { threadId: thread.id, direction: 'out', type: 'text', text: reply }
-                });
 
                 if (res.meta?.ruleId) {
                   await prisma.igEvent.create({
@@ -277,34 +277,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
   });
 }
 
-// Отправка текста пользователю через Page Access Token
-async function sendIGText(userPSID: string, text: string, quickReplies?: string[]) {
-  const token = process.env.PAGE_ACCESS_TOKEN || '';
-  if (!token) throw new Error('PAGE_ACCESS_TOKEN is not set');
-
-  const payload: any = {
-    recipient: { id: userPSID },
-    message: { text }
-  };
-
-  if (Array.isArray(quickReplies) && quickReplies.length) {
-    payload.message.quick_replies = quickReplies.slice(0, 11).map((title) => ({
-      content_type: 'text',
-      title: String(title).slice(0, 20),
-      payload: `QR:${title}`
-    }));
-  }
-
-  const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`;
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    await logIntegrationError({ source: 'IG_GRAPH', code: String(r.status), message: 'IG send error', meta: { errText, payload } });
-    throw new Error(`IG send error ${r.status}`);
-  }
+// Отправка текста пользователю через очередь Outbox
+async function sendIGText(userPSID: string, text: string, quickReplies?: string[], threadId?: string) {
+  await enqueue('IG', { userPSID, text, quickReplies, threadId });
 }

@@ -42,6 +42,7 @@ model IgEvent {
   type       String   // text | attachment | postback | system
   text       String?
   payload    Json?
+  extId      String?  @unique // внешний ID события (mid или event id)
   at         DateTime @default(now())
 }
 
@@ -130,4 +131,15 @@ model IntegrationError {
   message   String?
   meta      Json?
   createdAt DateTime @default(now())
+}
+
+model Outbox {
+  id        String   @id @default(cuid())
+  type      String   // 'IG' | 'OPENAI' | 'TELEGRAM'
+  payload   Json
+  status    String   @default("pending") // pending|sent|error
+  attempts  Int      @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
