@@ -1,4 +1,5 @@
 import { prisma } from '../prisma.js';
+import { enqueue } from './outbox.js';
 
 // Типы узлов:
 // sendText { type:'sendText', text, next? }
@@ -33,15 +34,13 @@ export async function tickFlow(stateId: string) {
 
   // действия по типам:
   if (node.type === 'sendText') {
-    await sendIG(contact.igUserId, node.text, undefined);
-    await log(state.threadId, 'out', 'text', node.text);
+    await sendIG(contact.igUserId, state.threadId, node.text, undefined);
     await gotoNext(state, node.next);
     return;
   }
 
   if (node.type === 'sendQuick') {
-    await sendIG(contact.igUserId, node.text, node.quick || []);
-    await log(state.threadId, 'out', 'text', node.text);
+    await sendIG(contact.igUserId, state.threadId, node.text, node.quick || []);
     await gotoNext(state, node.next);
     return;
   }
@@ -78,17 +77,6 @@ async function gotoNext(state: any, next?: string) {
   }
 }
 
-async function sendIG(userId: string, text: string, quick?: string[]) {
-  // используем ту же отправку, что и в ig.ts
-  const token = process.env.PAGE_ACCESS_TOKEN || '';
-  const payload: any = { recipient: { id: userId }, message: { text } };
-  if (Array.isArray(quick) && quick.length) {
-    payload.message.quick_replies = quick.slice(0, 11).map(t => ({ content_type:'text', title:String(t).slice(0,20), payload: `QR:${t}` }));
-  }
-  const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`;
-  await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-}
-
-async function log(threadId: string, direction: 'in'|'out', type: string, text?: string) {
-  await prisma.igEvent.create({ data: { threadId, direction, type, text } });
+async function sendIG(userId: string, threadId: string, text: string, quick?: string[]) {
+  await enqueue('IG', { userPSID: userId, text, quickReplies: quick, threadId });
 }

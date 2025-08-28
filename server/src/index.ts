@@ -14,6 +14,7 @@ import { registerIgSettingsRoutes } from './routes/igSettings.js';
 import { registerFlowRoutes } from './routes/flows.js';
 import { registerFlowBatchRoutes } from './routes/flowBatch.js';
 import { runFlowTicker } from './jobs/flowTicker.js';
+import { runOutboxWorker } from './jobs/outboxWorker.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerErrorsAdminRoutes } from './routes/errorsAdmin.js';
 
@@ -47,3 +48,4 @@ app.listen({ port, host: '0.0.0.0' }).then(() => {
 });
 
 setInterval(() => { runFlowTicker().catch(err => app.log.error(err)); }, 5_000);
+setInterval(() => runOutboxWorker().catch(e => app.log.error(e)), 5_000);
