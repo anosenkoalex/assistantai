@@ -17,6 +17,8 @@ import { runFlowTicker } from './jobs/flowTicker.js';
 import { runOutboxWorker } from './jobs/outboxWorker.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerErrorsAdminRoutes } from './routes/errorsAdmin.js';
+import { runRetention } from './jobs/retention.js';
+import { registerMetrics } from './routes/metrics.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || 'info' } });
 
@@ -41,6 +43,7 @@ await registerFlowRoutes(app);
 await registerFlowBatchRoutes(app);
 await registerHealthRoutes(app);
 await registerErrorsAdminRoutes(app);
+await registerMetrics(app);
 
 const port = Number(process.env.API_PORT ?? 8787);
 app.listen({ port, host: '0.0.0.0' }).then(() => {
@@ -49,3 +52,11 @@ app.listen({ port, host: '0.0.0.0' }).then(() => {
 
 setInterval(() => { runFlowTicker().catch(err => app.log.error(err)); }, 5_000);
 setInterval(() => runOutboxWorker().catch(e => app.log.error(e)), 5_000);
+setInterval(()=>runRetention().catch(e=>app.log.error(e)), 6*3600e3);
+
+const rotateDays = Number(process.env.SECRETS_ROTATE_DAYS||90);
+const boot = new Date();
+setInterval(()=>{
+  const age = (Date.now()-boot.getTime())/(24*3600e3);
+  if (age>rotateDays) app.log.warn('Secrets rotation reminder: please rotate tokens/keys');
+}, 24*3600e3);

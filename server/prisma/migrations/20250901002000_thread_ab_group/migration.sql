@@ -1,0 +1,1 @@
+ALTER TABLE "IgThread" ADD COLUMN "abGroup" TEXT;

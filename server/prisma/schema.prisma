@@ -20,6 +20,10 @@ model IgContact {
   threads       IgThread[]
   status        String   @default("bot") // bot | manager | muted
   notes         String?
+  lastSentAt    DateTime?
+  dailySent     Int      @default(0)
+  dailyResetAt  DateTime?
+  tags          IgContactTag[]
 }
 
 model IgThread {
@@ -32,6 +36,7 @@ model IgThread {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   events        IgEvent[]
+  abGroup       String?
 }
 
 model IgEvent {
@@ -78,6 +83,12 @@ model Usage {
   completionTokens Int
   costUsd         Float    @default(0)
   createdAt       DateTime @default(now())
+}
+
+model User {
+  id    String @id @default(cuid())
+  login String @unique
+  role  String @default("operator") // 'admin'|'operator'
 }
 
 model Flow {
@@ -142,4 +153,11 @@ model Outbox {
   lastError String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model IgContactTag {
+  id String @id @default(cuid())
+  contactId String
+  tag String
+  createdAt DateTime @default(now())
 }

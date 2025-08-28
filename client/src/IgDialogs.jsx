@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { igListContacts, igListThreads, igListEvents, igSetContactStatus, igAdminSend } from './api';
+import { igListContacts, igListThreads, igListEvents, igSetContactStatus, igAdminSend, igAddTag, igRemoveTag } from './api';
 
 export default function IgDialogs() {
   const [contacts, setContacts] = useState([]);
@@ -11,6 +11,7 @@ export default function IgDialogs() {
   const [events, setEvents] = useState([]);
   const [outText, setOutText] = useState('');
   const [outQuick, setOutQuick] = useState(''); // "Цена,Доставка"
+  const [newTag, setNewTag] = useState('');
 
   async function loadContacts() {
     try {
@@ -48,12 +49,13 @@ export default function IgDialogs() {
       <div>
         <h3>Контакты ({total})</h3>
         <div style={{ maxHeight: '70vh', overflow: 'auto', border: '1px solid #ddd' }}>
-          {contacts.map(c => {
+        {contacts.map(c => {
             const last = c.threads?.[0]?.events?.[0];
             return (
               <div key={c.id} style={{ padding: 8, borderBottom: '1px solid #eee', cursor: 'pointer' }}
                    onClick={() => loadThreads(c)}>
                 <div><b>{c.igUserId}</b> • {c.status}</div>
+                <div>{(c.tags||[]).map(t=>t.tag).join(', ')}</div>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>
                   {last?.text ? last.text.slice(0, 80) : '(нет сообщений)'}
                 </div>
@@ -107,6 +109,17 @@ export default function IgDialogs() {
         </div>
         {selectedContact && (
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #ccc' }}>
+            <div style={{ marginBottom:8 }}>
+              Теги: {(selectedContact.tags||[]).map(t => (
+                <span key={t.id} style={{ marginRight:4 }}>
+                  {t.tag} <button onClick={async()=>{ await igRemoveTag(selectedContact.id, t.tag); loadContacts(); }}>{'x'}</button>
+                </span>
+              ))}
+            </div>
+            <div style={{ marginBottom:8 }}>
+              <input value={newTag} onChange={e=>setNewTag(e.target.value)} placeholder="Новый тег" />
+              <button onClick={async()=>{ await igAddTag(selectedContact.id, newTag); setNewTag(''); loadContacts(); }}>Добавить</button>
+            </div>
             <h4>Ответить как менеджер</h4>
             <textarea rows={3} value={outText} onChange={e=>setOutText(e.target.value)} placeholder="Сообщение клиенту..." style={{ width:'100%' }} />
             <div style={{ marginTop: 6, display:'flex', gap:8 }}>

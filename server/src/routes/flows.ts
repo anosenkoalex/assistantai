@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
-import { requireAdmin } from '../mw/auth.js';
+import { requireRole } from '../mw/auth.js';
 
 export async function registerFlowRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', (req, reply, done) => requireAdmin(req, reply, done));
+  app.addHook('onRequest', (req, reply, done) => requireRole('admin')(req, reply, done));
 
   app.get('/api/flows', async () => prisma.flow.findMany({ orderBy: { updatedAt: 'desc' } }));
   app.post('/api/flows', async (req, reply) => {
@@ -66,6 +66,21 @@ export async function registerFlowRoutes(app: FastifyInstance) {
     if (!flow) return reply.code(404).send({ error: 'not found' });
     const triggers = await prisma.flowTrigger.findMany({ where: { flowId: id } });
     return { flow, triggers };
+  });
+
+  app.get('/api/flows/:id/analytics', async (req) => {
+    const { id } = req.params as any;
+    const states = await prisma.flowState.findMany({ where:{ flowId: id }, select:{ threadId:true } });
+    const threadIds = states.map(s=>s.threadId);
+    if (!threadIds.length) return { items: [], total: 0 };
+    const events = await prisma.igEvent.findMany({ where:{ threadId:{ in: threadIds }, type:'flow_node' } });
+    const map = new Map<string, number>();
+    for (const e of events) {
+      const nodeId = (e.text||'').replace(/^node:/,'');
+      map.set(nodeId, (map.get(nodeId)||0)+1);
+    }
+    const items = Array.from(map.entries()).map(([nodeId,count])=>({ nodeId, count })).sort((a,b)=>b.count-a.count);
+    return { items, total: events.length };
   });
 
   app.post('/api/flows/import', async (req, reply) => {

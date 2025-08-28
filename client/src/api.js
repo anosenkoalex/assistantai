@@ -166,6 +166,26 @@ export async function igAdminSend({ contactId, text, quick }) {
   return r.json();
 }
 
+export async function igAddTag(id, tag) {
+  const r = await fetch(`/api/ig/contacts/${id}/tags`, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', ...authHeaders() },
+    body: JSON.stringify({ tag })
+  });
+  if (!r.ok) throw new Error('add tag failed');
+  return r.json();
+}
+
+export async function igRemoveTag(id, tag) {
+  const r = await fetch(`/api/ig/contacts/${id}/tags`, {
+    method:'DELETE',
+    headers:{ 'Content-Type':'application/json', ...authHeaders() },
+    body: JSON.stringify({ tag })
+  });
+  if (!r.ok) throw new Error('remove tag failed');
+  return r.json();
+}
+
 export async function igRuleStats(params = {}) {
   const q = new URLSearchParams(params).toString();
   const r = await fetch(`/api/ig/stats/rules${q ? `?${q}` : ''}`, { headers: { ...authHeaders() } });
