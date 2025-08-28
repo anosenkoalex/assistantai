@@ -1,5 +1,6 @@
 import { prisma } from '../prisma.js';
 import { enqueue } from './outbox.js';
+import { canSend, markSent } from './limits.js';
 
 // Типы узлов:
 // sendText { type:'sendText', text, next? }
@@ -29,18 +30,30 @@ export async function tickFlow(stateId: string) {
     return;
   }
 
+  await prisma.igEvent.create({ data:{ threadId: state.threadId, direction:'out', type:'flow_node', text: `node:${state.nodeId}` }});
+
   const contact = await prisma.igContact.findUnique({ where: { id: state.contactId } });
   if (!contact) return;
 
   // действия по типам:
   if (node.type === 'sendText') {
-    await sendIG(contact.igUserId, state.threadId, node.text, undefined);
+    if (await canSend(contact.id)) {
+      await sendIG(contact.igUserId, state.threadId, node.text, undefined);
+      await markSent(contact.id);
+    } else {
+      console.warn('rate limited', { contactId: contact.id });
+    }
     await gotoNext(state, node.next);
     return;
   }
 
   if (node.type === 'sendQuick') {
-    await sendIG(contact.igUserId, state.threadId, node.text, node.quick || []);
+    if (await canSend(contact.id)) {
+      await sendIG(contact.igUserId, state.threadId, node.text, node.quick || []);
+      await markSent(contact.id);
+    } else {
+      console.warn('rate limited', { contactId: contact.id });
+    }
     await gotoNext(state, node.next);
     return;
   }

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
-import { requireAdmin } from '../mw/auth.js';
+import { requireRole } from '../mw/auth.js';
 
 export async function registerErrorsAdminRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', (req, reply, done)=>requireAdmin(req, reply, done));
+  app.addHook('onRequest', (req, reply, done)=>requireRole('admin')(req, reply, done));
 
   app.get('/api/admin/errors', async (req) => {
     const { source, take='100', skip='0' } = (req.query || {}) as any;

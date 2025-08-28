@@ -3,9 +3,13 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '../prisma.js';
 import { applyRules } from '../services/igRules.js';
 import { notifyManager } from '../services/notify.js';
-import { requireAdmin } from '../mw/auth.js';
+import { requireRole } from '../mw/auth.js';
 import { enqueue } from '../services/outbox.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
+import { canSend, markSent } from '../services/limits.js';
+import { withTrace } from '../otel.js';
+import { canSpend } from '../services/costGuard.js';
+import { isToxic } from '../services/moderation.js';
 
 function isTriggerActive(trg: any, now = new Date()) {
   if (trg.startAt && now < new Date(trg.startAt)) return false;
@@ -61,11 +65,12 @@ export async function registerIGRoutes(app: FastifyInstance) {
       return reply.code(401).send('invalid signature');
     }
 
-    const body = req.body as any;
+      const body = req.body as any;
 
-    try {
-      if (body?.object === 'instagram' || body?.object === 'page') {
-        for (const entry of body.entry ?? []) {
+      try {
+        await withTrace('ig.webhook', async () => {
+        if (body?.object === 'instagram' || body?.object === 'page') {
+          for (const entry of body.entry ?? []) {
           for (const change of entry.changes ?? []) {
             const value = change.value || {};
             const messages: IGMessaging[] = value.messaging || value.messages || [];
@@ -98,7 +103,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
               });
               if (!thread) {
                 thread = await prisma.igThread.create({
-                  data: { contactId: contact.id, pageId: pageId ?? undefined }
+                  data: { contactId: contact.id, pageId: pageId ?? undefined, abGroup: Math.random() < 0.5 ? 'A' : 'B' }
                 });
               }
 
@@ -133,7 +138,12 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 });
               }
 
-              app.log.info({ userId, pageId, text }, 'IG inbound');
+                app.log.info({ userId, pageId, text }, 'IG inbound');
+
+                if (text && isToxic(text)) {
+                  await notifyManager({ userId: String(userId), text });
+                  continue;
+                }
 
               const now = new Date();
               const trgs = await prisma.flowTrigger.findMany({ where: { active: true } });
@@ -193,7 +203,12 @@ export async function registerIGRoutes(app: FastifyInstance) {
               // 5) Ветвление по действию
               if (res.action === 'mute') {
                 if (res.reply) {
+                  const lastIn = await prisma.igEvent.findFirst({ where:{ threadId: thread.id, direction:'in' }, orderBy:{ at:'desc' }});
+                  const within24h = lastIn && (Date.now()-new Date(lastIn.at).getTime()) < 24*3600e3;
+                  if (!within24h) { app.log.warn({ threadId: thread.id }, '24h window exceeded; suppressing message'); continue; }
+                  if (!(await canSend(contact.id))) { app.log.warn({ contactId: contact.id }, 'rate limited'); continue; }
                   await sendIGText(userId, res.reply, undefined, thread.id);
+                  await markSent(contact.id);
                 }
                 continue;
               }
@@ -201,7 +216,12 @@ export async function registerIGRoutes(app: FastifyInstance) {
               if (res.action === 'handoff') {
                 await notifyManager({ userId: String(userId), text: text || '' });
                 if (res.reply) {
+                  const lastIn2 = await prisma.igEvent.findFirst({ where:{ threadId: thread.id, direction:'in' }, orderBy:{ at:'desc' }});
+                  const within24h2 = lastIn2 && (Date.now()-new Date(lastIn2.at).getTime()) < 24*3600e3;
+                  if (!within24h2) { app.log.warn({ threadId: thread.id }, '24h window exceeded; suppressing message'); continue; }
+                  if (!(await canSend(contact.id))) { app.log.warn({ contactId: contact.id }, 'rate limited'); continue; }
                   await sendIGText(userId, res.reply, undefined, thread.id);
+                  await markSent(contact.id);
                 }
                 continue;
               }
@@ -210,7 +230,12 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 if (res.reply) {
                   const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
                   const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
-                  await sendIGText(userId, res.reply, quick, thread.id);
+                    const lastIn3 = await prisma.igEvent.findFirst({ where:{ threadId: thread.id, direction:'in' }, orderBy:{ at:'desc' }});
+                    const within24h3 = lastIn3 && (Date.now()-new Date(lastIn3.at).getTime()) < 24*3600e3;
+                    if (!within24h3) { app.log.warn({ threadId: thread.id }, '24h window exceeded; suppressing message'); continue; }
+                    if (!(await canSend(contact.id))) { app.log.warn({ contactId: contact.id }, 'rate limited'); continue; }
+                    await sendIGText(userId, res.reply, quick, thread.id);
+                    await markSent(contact.id);
                 }
                 continue;
               }
@@ -219,7 +244,19 @@ export async function registerIGRoutes(app: FastifyInstance) {
                 const settings = await prisma.igSetting.findUnique({ where: { id: 1 } });
                 const quick = settings?.quickReplies ? JSON.parse(settings.quickReplies) as string[] : undefined;
 
-                if (contact.status === 'bot' && settings?.aiEnabled && text) {
+                if (contact.status === 'bot' && settings?.aiEnabled && text && thread.abGroup !== 'A') {
+                  const cap = Number(process.env.AI_DAILY_CAP_USD||3);
+                  if (!(await canSpend(cap))) {
+                    app.log.warn('AI cap reached');
+                    if (res.reply) {
+                    const lastIn4 = await prisma.igEvent.findFirst({ where:{ threadId: thread.id, direction:'in' }, orderBy:{ at:'desc' }});
+                    const within24h4 = lastIn4 && (Date.now()-new Date(lastIn4.at).getTime()) < 24*3600e3;
+                    if (!within24h4) { app.log.warn({ threadId: thread.id }, '24h window exceeded; suppressing message'); continue; }
+                    if (!(await canSend(contact.id))) { app.log.warn({ contactId: contact.id }, 'rate limited'); continue; }
+                    await sendIGText(userId, res.reply, quick, thread.id);
+                    await markSent(contact.id);
+                    }
+                  } else {
                   const model = settings.aiModel || process.env.DEFAULT_MODEL || 'gpt-4o-mini';
                   const temperature = typeof settings.aiTemperature === 'number' ? settings.aiTemperature : 0.7;
                   await enqueue('OPENAI', {
@@ -232,8 +269,14 @@ export async function registerIGRoutes(app: FastifyInstance) {
                     systemPrompt: settings.systemPrompt ?? undefined,
                     quickReplies: quick
                   });
+                  }
                 } else if (res.reply) {
-                  await sendIGText(userId, res.reply, quick, thread.id);
+                    const lastIn4 = await prisma.igEvent.findFirst({ where:{ threadId: thread.id, direction:'in' }, orderBy:{ at:'desc' }});
+                    const within24h4 = lastIn4 && (Date.now()-new Date(lastIn4.at).getTime()) < 24*3600e3;
+                    if (!within24h4) { app.log.warn({ threadId: thread.id }, '24h window exceeded; suppressing message'); continue; }
+                    if (!(await canSend(contact.id))) { app.log.warn({ contactId: contact.id }, 'rate limited'); continue; }
+                    await sendIGText(userId, res.reply, quick, thread.id);
+                    await markSent(contact.id);
                 }
 
                 if (res.meta?.ruleId) {
@@ -253,17 +296,18 @@ export async function registerIGRoutes(app: FastifyInstance) {
               // res.action === 'none' → ничего не делаем
             }
           }
+          }
         }
+        });
+      } catch (e: any) {
+        app.log.error(e, 'IG webhook error');
       }
-    } catch (e: any) {
-      app.log.error(e, 'IG webhook error');
-    }
 
     return reply.code(200).send('ok');
   });
 
   // Подписка страницы на сообщения
-  app.post('/api/ig/subscribe', { preHandler: requireAdmin }, async (_req, reply) => {
+  app.post('/api/ig/subscribe', { preHandler: requireRole('admin') }, async (_req, reply) => {
     const pageId = process.env.FB_PAGE_ID || '';
     const token = process.env.PAGE_ACCESS_TOKEN || '';
     if (!pageId || !token) {

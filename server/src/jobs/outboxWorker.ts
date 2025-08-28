@@ -1,10 +1,13 @@
 import { prisma } from '../prisma.js';
 import { logIntegrationError } from '../services/ilog.js';
-import { askOpenAI, buildThreadMessages } from '../services/ai.js';
+import { ask, buildThreadMessages } from '../services/ai.js';
 import { estimateCostUsd } from '../services/cost.js';
 import { enqueue } from '../services/outbox.js';
+import { igOutMessages, igErrors } from '../metrics.js';
+import { withTrace } from '../otel.js';
 
 export async function runOutboxWorker() {
+  await withTrace('outbox.worker', async () => {
   const items = await prisma.outbox.findMany({ where: { status: 'pending' }, take: 20, orderBy: { createdAt: 'asc' } });
   for (const it of items) {
     try {
@@ -27,17 +30,19 @@ export async function runOutboxWorker() {
         });
         if (!r.ok) {
           const errText = await r.text().catch(() => '');
+          igErrors.inc();
           throw new Error(`IG send error ${r.status}: ${errText}`);
         }
         const data = await r.json().catch(() => ({}));
         if (p.threadId) {
           await prisma.igEvent.create({ data: { threadId: p.threadId, direction: 'out', type: 'text', text: p.text, extId: data?.message_id } });
         }
+        igOutMessages.inc();
       }
       if (it.type === 'OPENAI') {
         const p = it.payload as any;
         const msgs = await buildThreadMessages(p.threadId, p.text, p.systemPrompt, 12);
-        const ai = await askOpenAI(msgs, p.model, p.temperature);
+        const ai = await ask(msgs, { model: p.model, temperature: p.temperature });
         await enqueue('IG', { userPSID: p.userPSID, text: ai.text, quickReplies: p.quickReplies, threadId: p.threadId });
         if (ai.usage) {
           const cost = estimateCostUsd(p.model, ai.usage.prompt_tokens, ai.usage.completion_tokens);
@@ -70,9 +75,11 @@ export async function runOutboxWorker() {
     } catch (e: any) {
       const upd = await prisma.outbox.update({ where: { id: it.id }, data: { status: 'error', attempts: { increment: 1 }, lastError: String(e) } });
       await logIntegrationError({ source: it.type, message: 'outbox fail', meta: { payload: it.payload, err: String(e) } });
+      if (it.type === 'IG') igErrors.inc();
       if (upd.attempts < 3) {
         await prisma.outbox.update({ where: { id: it.id }, data: { status: 'pending' } });
       }
     }
   }
+  });
 }

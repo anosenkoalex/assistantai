@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
-import { requireAdmin } from '../mw/auth.js';
+import { requireRole } from '../mw/auth.js';
+import { canSend, markSent } from '../services/limits.js';
+import { igOutMessages, igErrors } from '../metrics.js';
 
 export async function registerIgAdminRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', (req, reply, done) => requireAdmin(req, reply, done));
+  app.addHook('onRequest', (req, reply, done) => requireRole('operator')(req, reply, done));
   // Список контактов (с последним событием)
   app.get('/api/ig/contacts', async (req) => {
     const { q, status, take = '30', skip = '0' } = (req.query ?? {}) as any;
@@ -15,6 +17,7 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
       prisma.igContact.findMany({
         where, orderBy: { updatedAt: 'desc' },
         include: {
+          tags: true,
           threads: {
             orderBy: { updatedAt: 'desc' },
             take: 1,
@@ -65,6 +68,22 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
     return updated;
   });
 
+  app.post('/api/ig/contacts/:id/tags', async (req, reply) => {
+    const { id } = req.params as any;
+    const { tag } = req.body as any;
+    if (!tag) return reply.code(400).send({ error: 'tag required' });
+    await prisma.igContactTag.create({ data:{ contactId: id, tag } });
+    return { ok: true };
+  });
+
+  app.delete('/api/ig/contacts/:id/tags', async (req, reply) => {
+    const { id } = req.params as any;
+    const { tag } = req.body as any;
+    if (!tag) return reply.code(400).send({ error: 'tag required' });
+    await prisma.igContactTag.deleteMany({ where:{ contactId: id, tag } });
+    return { ok: true };
+  });
+
   // Статистика нажатий Quick Replies (по text)
   app.get('/api/ig/stats/quick', async (req) => {
     const { from, to } = (req.query ?? {}) as any;
@@ -107,7 +126,15 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
     if (!thread) thread = await prisma.igThread.create({ data: { contactId } });
 
     // отправить
-    await sendIGText(contact.igUserId, text, Array.isArray(quick) ? quick : undefined);
+    if (!(await canSend(contact.id))) return reply.code(429).send({ error: 'rate_limited' });
+    try {
+      await sendIGText(contact.igUserId, text, Array.isArray(quick) ? quick : undefined);
+      igOutMessages.inc();
+    } catch {
+      igErrors.inc();
+      throw;
+    }
+    await markSent(contact.id);
 
     // залогировать
     await prisma.igEvent.create({

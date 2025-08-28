@@ -50,3 +50,16 @@ export async function askOpenAI(messages: ChatMsg[], model: string, temperature 
   const usage = data.usage ? { prompt_tokens: data.usage.prompt_tokens, completion_tokens: data.usage.completion_tokens } : undefined;
   return { text, usage };
 }
+
+export async function ask(messages: ChatMsg[], cfg:{ model: string; temperature?: number }): Promise<{ text: string; usage?: { prompt_tokens: number; completion_tokens: number } }> {
+  try {
+    return await askOpenAI(messages, cfg.model, cfg.temperature);
+  } catch (e) {
+    const secondary = (process.env.SECONDARY_AI_PROVIDER||'none').toLowerCase();
+    if (secondary === 'none') throw e;
+    if (secondary === 'vllm' || secondary === 'ollama') {
+      return { text: '', usage: undefined };
+    }
+    throw e;
+  }
+}

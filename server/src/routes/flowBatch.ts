@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
-import { requireAdmin } from '../mw/auth.js';
+import { requireRole } from '../mw/auth.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
 
 export async function registerFlowBatchRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', (req, reply, done)=>requireAdmin(req, reply, done));
+  app.addHook('onRequest', (req, reply, done)=>requireRole('admin')(req, reply, done));
 
   let lastRunAt = 0;
   // Запуск flow по сегменту: status? (bot|manager|muted), activeSince? (ISO)
@@ -13,6 +13,8 @@ export async function registerFlowBatchRoutes(app: FastifyInstance) {
     lastRunAt = Date.now();
     const { id } = req.params as any;
     const { status, activeSince, limit = 200 } = (req.body ?? {}) as any;
+    const cap = Number(process.env.BATCH_HARD_CAP || 500);
+    if (Number(limit) > cap) return reply.code(400).send({ error: 'limit too high' });
 
     const where:any = {};
     if (status) where.status = status;
