@@ -2,6 +2,7 @@ import { prisma } from '../prisma.js';
 import { enqueue } from './outbox.js';
 import { canSend, markSent } from './limits.js';
 import { postHook } from './hooks.js';
+import { jparse } from '../utils/json.js';
 
 // Типы узлов:
 // sendText { type:'sendText', text, next? }
@@ -24,7 +25,7 @@ export async function tickFlow(stateId: string) {
   const flow = await prisma.flow.findUnique({ where: { id: state.flowId } });
   if (!flow) return;
 
-  const nodes = flow.nodes as any;
+  const nodes = jparse<Record<string, any>>(flow.nodes, {});
   const node = nodes[state.nodeId];
   if (!node) {
     await prisma.flowState.update({ where: { id: state.id }, data: { status: 'done' }});

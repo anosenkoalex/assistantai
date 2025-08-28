@@ -6,6 +6,7 @@ import { notifyManager } from '../services/notify.js';
 import { requireRole } from '../mw/auth.js';
 import { enqueue } from '../services/outbox.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
+import { jstr } from '../utils/json.js';
 import { canSend, markSent } from '../services/limits.js';
 import { postHook } from '../services/hooks.js';
 import { withTrace } from '../otel.js';
@@ -129,7 +130,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
                     direction: 'in',
                     type: m.message?.text ? 'text' : m.postback ? 'postback' : 'system',
                     text: text ?? undefined,
-                    payload: m as any,
+                    payload: jstr(m as any),
                     extId
                   },
                   update: {}
@@ -141,7 +142,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
                     direction: 'in',
                     type: m.message?.text ? 'text' : m.postback ? 'postback' : 'system',
                     text: text ?? undefined,
-                    payload: m as any
+                    payload: jstr(m as any)
                   }
                 });
               }
@@ -295,7 +296,7 @@ export async function registerIGRoutes(app: FastifyInstance) {
                       direction: 'out',
                       type: 'rule',
                       text: `hit:${res.meta.keyword || ''}`,
-                      payload: { ruleId: res.meta.ruleId, keyword: res.meta.keyword }
+                      payload: jstr({ ruleId: res.meta.ruleId, keyword: res.meta.keyword })
                     }
                   });
                 }

@@ -5,14 +5,15 @@ import { estimateCostUsd } from '../services/cost.js';
 import { enqueue } from '../services/outbox.js';
 import { igOutMessages, igErrors } from '../metrics.js';
 import { withTrace } from '../otel.js';
+import { jparse } from '../utils/json.js';
 
 export async function runOutboxWorker() {
   await withTrace('outbox.worker', async () => {
   const items = await prisma.outbox.findMany({ where: { status: 'pending' }, take: 20, orderBy: { createdAt: 'asc' } });
   for (const it of items) {
     try {
+      const p = jparse<any>(it.payload, {});
       if (it.type === 'IG') {
-        const p = it.payload as any;
         const token = process.env.PAGE_ACCESS_TOKEN || '';
         const payload: any = { recipient: { id: p.userPSID }, message: { text: p.text } };
         if (Array.isArray(p.quickReplies) && p.quickReplies.length) {
@@ -40,7 +41,6 @@ export async function runOutboxWorker() {
         igOutMessages.inc();
       }
       if (it.type === 'OPENAI') {
-        const p = it.payload as any;
         const msgs = await buildThreadMessages(p.threadId, p.text, p.systemPrompt, 12);
         const ai = await ask(msgs, { model: p.model, temperature: p.temperature });
         await enqueue('IG', { userPSID: p.userPSID, text: ai.text, quickReplies: p.quickReplies, threadId: p.threadId });
@@ -58,7 +58,6 @@ export async function runOutboxWorker() {
         }
       }
       if (it.type === 'TELEGRAM') {
-        const p = it.payload as any;
         const token = process.env.TG_BOT_TOKEN || '';
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
         const r = await fetch(url, {
