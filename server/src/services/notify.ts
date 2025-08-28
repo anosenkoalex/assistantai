@@ -1,4 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
+import { logIntegrationError } from './ilog.js';
 
 let tg: TelegramBot | null = null;
 function getTg() {
@@ -17,5 +18,9 @@ export async function notifyManager({ userId, text }: { userId: string; text: st
     return;
   }
   const msg = `IG: запрос менеджера\n• user: ${userId}\n• text: ${text}`;
-  await bot.sendMessage(chatId, msg, { disable_web_page_preview: true });
+  try {
+    await bot.sendMessage(chatId, msg, { disable_web_page_preview: true });
+  } catch (e: any) {
+    await logIntegrationError({ source: 'TELEGRAM', message: e?.message, meta: { userId, text } });
+  }
 }

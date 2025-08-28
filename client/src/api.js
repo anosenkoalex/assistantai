@@ -173,6 +173,16 @@ export async function igRuleStats(params = {}) {
   return r.json();
 }
 
+export async function adminErrors(params={}) {
+  const q = new URLSearchParams(params).toString();
+  const r = await fetch(`/api/admin/errors${q ? `?${q}`: ''}`, { headers: { ...authHeaders() } });
+  if (!r.ok) throw new Error('errors fetch failed'); return r.json();
+}
+export async function adminErrorsClear() {
+  const r = await fetch('/api/admin/errors', { method:'DELETE', headers:{ ...authHeaders() } });
+  if (!r.ok) throw new Error('errors clear failed'); return r.json();
+}
+
 // Flows CRUD
 export async function flowsList() {
   const r = await fetch('/api/flows', { headers: { ...authHeaders() } });

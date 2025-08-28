@@ -6,6 +6,7 @@ import { requireAdmin } from '../mw/auth.js';
 import { buildThreadMessages, askOpenAI } from '../services/ai.js';
 import { estimateCostUsd } from '../services/cost.js';
 import { startFlow, tickFlow } from '../services/flowEngine.js';
+import { logIntegrationError } from '../services/ilog.js';
 
 function isTriggerActive(trg: any, now = new Date()) {
   if (trg.startAt && now < new Date(trg.startAt)) return false;
@@ -302,7 +303,8 @@ async function sendIGText(userPSID: string, text: string, quickReplies?: string[
   });
 
   if (!r.ok) {
-    const err = await r.text().catch(() => '');
-    throw new Error(`IG send error ${r.status}: ${err}`);
+    const errText = await r.text().catch(() => '');
+    await logIntegrationError({ source: 'IG_GRAPH', code: String(r.status), message: 'IG send error', meta: { errText, payload } });
+    throw new Error(`IG send error ${r.status}`);
   }
 }

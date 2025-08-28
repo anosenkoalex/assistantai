@@ -1,9 +1,8 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
-import helmet from 'fastify-helmet';
-import cors from 'fastify-cors';
+import helmet from '@fastify/helmet';
+import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { logger } from './logger.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerChatRoutes } from './routes/chat.js';
 import { registerModelsRoutes } from './routes/models.js';
@@ -15,13 +14,15 @@ import { registerIgSettingsRoutes } from './routes/igSettings.js';
 import { registerFlowRoutes } from './routes/flows.js';
 import { registerFlowBatchRoutes } from './routes/flowBatch.js';
 import { runFlowTicker } from './jobs/flowTicker.js';
+import { registerHealthRoutes } from './routes/health.js';
+import { registerErrorsAdminRoutes } from './routes/errorsAdmin.js';
 
-const app = Fastify({ logger });
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL || 'info' } });
 
 await app.register(helmet, { contentSecurityPolicy: false });
-await app.register(cors, { origin: true });
+await app.register(cors, { origin: true, credentials: true });
 await app.register(rateLimit, {
-  max: 60,
+  max: 120,
   timeWindow: '1 minute',
 });
 
@@ -37,6 +38,8 @@ await registerIgAdminRoutes(app);
 await registerIgSettingsRoutes(app);
 await registerFlowRoutes(app);
 await registerFlowBatchRoutes(app);
+await registerHealthRoutes(app);
+await registerErrorsAdminRoutes(app);
 
 const port = Number(process.env.API_PORT ?? 8787);
 app.listen({ port, host: '0.0.0.0' }).then(() => {

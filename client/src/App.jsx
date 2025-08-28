@@ -8,13 +8,14 @@ import IgSettings from './IgSettings';
 import IgStats from './IgStats';
 import IgRuleStats from './IgRuleStats';
 import Flows from './Flows';
+import AdminErrors from './AdminErrors';
 
 export default function App() {
   const [tab, setTab] = useState('chat');
   const [authed, setAuthed] = useState(false);
   useEffect(()=>{ setAuthed(!!localStorage.getItem('ADMIN_TOKEN')); }, []);
 
-  const adminTabs = ['ig_rules','ig_dialogs','ig_settings','ig_stats','ig_rule_stats'];
+  const adminTabs = ['ig_rules','ig_dialogs','ig_settings','ig_stats','ig_rule_stats','errors'];
   const needAuth = adminTabs.includes(tab);
 
   if (needAuth && !authed) {
@@ -32,6 +33,7 @@ export default function App() {
         <button onClick={() => setTab('ig_stats')}>IG Stats</button>
         <button onClick={() => setTab('ig_rule_stats')}>IG Rule Stats</button>
         <button onClick={() => setTab('flows')}>Flows</button>
+        <button onClick={()=>setTab('errors')}>Errors</button>
       </nav>
       {tab === 'chat' && <Chat />}
       {tab === 'settings' && <BusinessSettings />}
@@ -41,6 +43,7 @@ export default function App() {
       {tab === 'ig_stats' && <IgStats />}
       {tab === 'ig_rule_stats' && <IgRuleStats />}
       {tab === 'flows' && <Flows />}
+      {tab === 'errors' && <AdminErrors />}
     </div>
   );
 }
