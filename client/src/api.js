@@ -198,6 +198,16 @@ export async function adminErrors(params={}) {
   const r = await fetch(`/api/admin/errors${q ? `?${q}`: ''}`, { headers: { ...authHeaders() } });
   if (!r.ok) throw new Error('errors fetch failed'); return r.json();
 }
+
+export async function adminTestIgSend({ userId, text, quick }) {
+  const r = await fetch('/api/admin/test/ig-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ userId, text, quick })
+  });
+  if (!r.ok) throw new Error('admin test send failed');
+  return r.json();
+}
 export async function adminErrorsClear() {
   const r = await fetch('/api/admin/errors', { method:'DELETE', headers:{ ...authHeaders() } });
   if (!r.ok) throw new Error('errors clear failed'); return r.json();

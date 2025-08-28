@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../prisma.js';
-import { requireRole } from '../mw/auth.js';
+import { requireAdmin } from '../mw/auth.js';
 import { canSend, markSent } from '../services/limits.js';
 import { igOutMessages, igErrors } from '../metrics.js';
+import { sendIGText } from './ig.js';
 
 export async function registerIgAdminRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', (req, reply, done) => requireRole('operator')(req, reply, done));
+  app.addHook('onRequest', (req, reply, done) => requireAdmin(req, reply, done));
   // Список контактов (с последним событием)
   app.get('/api/ig/contacts', async (req) => {
     const { q, status, take = '30', skip = '0' } = (req.query ?? {}) as any;
@@ -130,9 +131,9 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
     try {
       await sendIGText(contact.igUserId, text, Array.isArray(quick) ? quick : undefined);
       igOutMessages.inc();
-    } catch {
+    } catch (err) {
       igErrors.inc();
-      throw;
+      throw err;
     }
     await markSent(contact.id);
 
@@ -176,31 +177,18 @@ export async function registerIgAdminRoutes(app: FastifyInstance) {
 
     return { items, total: events.length };
   });
-}
 
-// локальная утилита (скопируй реализацию, как в routes/ig.ts)
-async function sendIGText(userPSID: string, text: string, quickReplies?: string[]) {
-  const token = process.env.PAGE_ACCESS_TOKEN || '';
-  if (!token) throw new Error('PAGE_ACCESS_TOKEN is not set');
+  app.post('/api/admin/test/ig-send', async (req, reply) => {
+    const { userId, text, quick } = (req.body ?? {}) as { userId?: string; text?: string; quick?: string[] };
+    if (!userId || !text) return reply.code(400).send({ error: 'userId and text required' });
 
-  const payload: any = { recipient: { id: userPSID }, message: { text } };
-  if (Array.isArray(quickReplies) && quickReplies.length) {
-    payload.message.quick_replies = quickReplies.slice(0, 11).map((title) => ({
-      content_type: 'text',
-      title: String(title).slice(0, 20),
-      payload: `QR:${title}`,
-    }));
-  }
-
-  const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`;
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    try {
+      await sendIGText(String(userId), String(text), Array.isArray(quick) ? quick : undefined);
+      return { ok: true };
+    } catch (e: any) {
+      app.log.error(e, 'admin test ig-send failed');
+      return reply.code(500).send({ error: String(e?.message || e) });
+    }
   });
-  if (!r.ok) {
-    const err = await r.text().catch(() => '');
-    throw new Error(`IG send error ${r.status}: ${err}`);
-  }
 }
 

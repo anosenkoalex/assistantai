@@ -20,7 +20,6 @@ import { registerErrorsAdminRoutes } from './routes/errorsAdmin.js';
 import { runRetention } from './jobs/retention.js';
 import { registerMetrics } from './routes/metrics.js';
 import { registerHooksRoutes } from './routes/hooks.js';
-import { registerAdminTestRoutes } from './routes/adminTest.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || 'info' } });
 
@@ -47,7 +46,6 @@ await registerHealthRoutes(app);
 await registerErrorsAdminRoutes(app);
 await registerMetrics(app);
 await registerHooksRoutes(app);
-await registerAdminTestRoutes(app);
 
 const port = Number(process.env.API_PORT ?? 8787);
 app.listen({ port, host: '0.0.0.0' }).then(() => {

@@ -331,6 +331,6 @@ export async function registerIGRoutes(app: FastifyInstance) {
 }
 
 // Отправка текста пользователю через очередь Outbox
-async function sendIGText(userPSID: string, text: string, quickReplies?: string[], threadId?: string) {
+export async function sendIGText(userPSID: string, text: string, quickReplies?: string[], threadId?: string) {
   await enqueue('IG', { userPSID, text, quickReplies, threadId });
 }
